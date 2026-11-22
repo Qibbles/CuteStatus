@@ -2,7 +2,12 @@
 
 A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
 
-Under the hood, its **token saver** cuts what Claude has to read: it condenses noisy tool output, skips re-reading files that haven't changed, and keeps replies short. The band shows how much it saved.
+It does two jobs:
+
+- **A heads-up display** of your weekly and 5-hour limits, task progress, tokens and context, with helpers shown in colour.
+- **A token saver** that cuts what Claude has to read, so your limits last longer. It condenses noisy tool output, skips re-reading files that haven't changed and keeps replies short. A test run that would cost Claude ~15,000 tokens to read costs ~300. The band shows how much it has saved: `saved 38k`.
+
+Both run on your computer and never call the model.
 
 ![The Kibbles band: working, waiting for you, and idle](docs/band.png)
 
@@ -20,6 +25,46 @@ The bars:
 
 - **Week:** split into days, each day in its own colour, matching the coloured day names in the text. You can see which days used the most. Grey is usage from before Kibbles started counting this week.
 - **Task and Token:** turn from **green** to **amber** to **red** as they fill. The 5-hour limit and the context window use the same colours in their text.
+
+## Token saver
+
+![A 900-test run: what it printed vs what Claude reads after the token saver](docs/saver.png)
+
+The more Claude reads, the faster you use up your limits. The token saver works by itself, runs locally and never calls the model. It works in four ways.
+
+**1. Noisy output is condensed.** Before Claude sees the output of a shell command or an MCP tool, the saver:
+
+- strips colour codes and progress bars;
+- collapses runs of repeated log lines (`[998 similar lines collapsed, not shown]`);
+- keeps the start and end of very long output (`[840 lines trimmed]`);
+- shortens huge JSON values and lists.
+
+Lines containing **error, fail, warn, traceback, exception, panic, fatal or assert are never removed**. Number-only data, such as `seq` output or a numeric CSV, is never collapsed. Claude is told that the hidden lines were not shown and must not be guessed, and that adding the comment `# nofilter` to a command gets the full output.
+
+**2. Unchanged files aren't read twice.** If Claude reads a file again and nothing has changed, it gets a one-line note to use what it already has.
+
+- If it asks again straight away, the read goes through.
+- If the file has changed, Claude gets just the diff, provided the diff is small. Edits still work afterwards.
+- The main chat and each helper are tracked separately.
+- After an edit or a compaction, the next read is a full one.
+
+**3. Terse replies.** A short style instruction asks for no preamble, no restating the question, no closing recap, and code changes shown as diffs. It never shortens code, commands or error messages. It's set once at the start of a chat, in the system prompt, so it doesn't break Claude's prompt cache. If you switch it in the settings mid-chat, Claude gets one note instead.
+
+**4. Savings in the band.** The Token row shows how many tokens the saver kept out of the chat: `· saved 38k`. There's nothing to run: it works by itself, and you can tune or turn it off in the settings below.
+
+**Measured savings** (estimated at ~4 characters a token; no error lines lost in any case):
+
+| Output | Before | After | Saved |
+|---|---:|---:|---:|
+| A pytest run of 900 tests with 1 failure | 15,373 | 323 | 98% |
+| 300 log lines with 1 error | 4,384 | 106 | 98% |
+| pip install with progress bars | 965 | 65 | 93% |
+| A 120-item GitHub API response | 56,102 | 4,180 | 93% |
+| A coloured cargo build | 428 | 50 | 88% |
+| A 16-step coding session (output + re-reads) | 92,201 | 11,122 | 88% |
+| Output that was already short | – | – | 0% |
+
+How much you save depends on how noisy your tools are: test runners, builds, logs, API JSON and re-reads save the most.
 
 ## Helpers (subagents)
 
@@ -57,44 +102,6 @@ Kibbles' mood follows your weekly usage:
 | 50–80% | 2 sweat drops, faster spin | straight face |
 | Over 80% | 3 sweat drops, eyes spinning backwards | worried, with a sweat drop |
 
-## Token saver
-
-It works by itself, runs locally and never calls the model. It works in four ways.
-
-**1. Noisy output is condensed.** Before Claude sees the output of a shell command or an MCP tool, the saver:
-
-- strips colour codes and progress bars;
-- collapses runs of repeated log lines (`[998 similar lines collapsed, not shown]`);
-- keeps the start and end of very long output (`[840 lines trimmed]`);
-- shortens huge JSON values and lists.
-
-Lines containing **error, fail, warn, traceback, exception, panic, fatal or assert are never removed**. Number-only data, such as `seq` output or a numeric CSV, is never collapsed. Claude is told that the hidden lines were not shown and must not be guessed, and that adding the comment `# nofilter` to a command gets the full output.
-
-**2. Unchanged files aren't read twice.** If Claude reads a file again and nothing has changed, it gets a one-line note to use what it already has.
-
-- If it asks again straight away, the read goes through.
-- If the file has changed, Claude gets just the diff, provided the diff is small. Edits still work afterwards.
-- The main chat and each helper are tracked separately.
-- After an edit or a compaction, the next read is a full one.
-
-**3. Terse replies.** A short style instruction asks for no preamble, no restating the question, no closing recap, and code changes shown as diffs. It never shortens code, commands or error messages. It's set once at the start of a chat, in the system prompt, so it doesn't break Claude's prompt cache. If you switch it in the settings mid-chat, Claude gets one note instead.
-
-**4. Savings in the band.** The Token row shows how many tokens the saver kept out of the chat: `· saved 38k`. There's nothing to run: it works by itself, and you can tune or turn it off in the settings below.
-
-**Measured savings** (estimated at ~4 characters a token; no error lines lost in any case):
-
-| Output | Before | After | Saved |
-|---|---:|---:|---:|
-| A pytest run of 900 tests with 1 failure | 15,373 | 314 | 98% |
-| 300 log lines with 1 error | 4,384 | 106 | 98% |
-| pip install with progress bars | 965 | 65 | 93% |
-| A 120-item GitHub API response | 56,102 | 4,180 | 93% |
-| A coloured cargo build | 428 | 50 | 88% |
-| A 16-step coding session (output + re-reads) | 92,201 | 11,122 | 88% |
-| Output that was already short | – | – | 0% |
-
-How much you save depends on how noisy your tools are: test runners, builds, logs, API JSON and re-reads save the most.
-
 ## Install
 
 You need [Claude Code](https://claude.com/claude-code). In a Claude Code session, type:
@@ -112,6 +119,20 @@ claude plugin install kibbles --marketplace Qibbles/Kibbles
 ```
 
 In the Claude desktop app, where `/plugin` doesn't run: click **+** next to the prompt box, then **Plugins**, **Add marketplace**, enter `Qibbles/Kibbles`, then **Add plugin**.
+
+## Updating
+
+Plugins don't update by themselves. To get the latest version:
+
+```bash
+claude plugin marketplace update kibbles
+```
+
+```bash
+claude plugin update kibbles
+```
+
+Then start a new Claude Code session. To see which version you have, run `claude plugin list`.
 
 ## Turn it off or remove it
 
