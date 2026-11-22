@@ -1,7 +1,7 @@
 {
   "name": "cute-status",
-  "version": "2.1.1",
-  "description": "A tiny live band above the Claude Code prompt: weekly and 5-hour limits with a day-by-day chart, task progress and timer, tokens and context, helpers in colour, and Kibbles, an animated frog who works, waves when Claude needs you, and naps when idle.",
+  "version": "2.2.0",
+  "description": "A tiny live band above the Claude Code prompt: weekly and 5-hour limits with a day-by-day chart, task progress and timer, tokens and context, helpers in colour, and Kibbles the frog. Its built-in token saver condenses noisy tool output, skips unchanged re-reads and keeps replies terse, and shows what it saved.",
   "author": {
     "name": "Qibbles",
     "url": "https://github.com/Qibbles"
@@ -15,7 +15,9 @@
     "rate-limit",
     "mascot",
     "progress",
-    "tokens"
+    "tokens",
+    "token-saver",
+    "context"
   ],
   "types": "./types/index.d.ts"
 }

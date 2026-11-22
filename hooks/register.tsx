@@ -2,6 +2,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { BandData, Helper, Step } from '../types'
 import { type Activity, mascotSvg, moodFor, textFace } from './mascot'
+import { registerSaver, saverAfterToolCall, saverSavings, saverAgentReport, saverPromptSubmit, saverSessionStart } from './saver/saver'
 
 // ---------------------------------------------------------------------------
 // cute-status: a 3-line band above the prompt. Everything is local: it reads
@@ -38,7 +39,8 @@ const DEFAULT_CONFIG: Config = {
 
 const CONFIG_NOTE =
   'cute-status config. weeklyTokenLimit, resetDay, resetTime and utcOffsetHours are used only when your plan does ' +
-  'not report its real weekly limit (Claude subscriptions do). taskTokenSoftCap sets how full the Token bar looks.'
+  'not report its real weekly limit (Claude subscriptions do). taskTokenSoftCap sets how full the Token bar looks. ' +
+  'tokenSaver holds the token saver settings (see the README); /tokensaver status shows them all.'
 
 // --- helpers ---------------------------------------------------------------
 
@@ -247,7 +249,10 @@ async function loadConfig($: EngineInterface): Promise<void> {
     try {
       await $.fs.stat(path)
     } catch {
-      await $.fs.write(path, JSON.stringify({ _note: CONFIG_NOTE, ...DEFAULT_CONFIG }, null, 2) + '\n')
+      await $.fs.write(
+        path,
+        JSON.stringify({ _note: CONFIG_NOTE, ...DEFAULT_CONFIG, tokenSaver: { enabled: true, terse: true } }, null, 2) + '\n',
+      )
     }
   }
 }
@@ -276,6 +281,10 @@ function recompute(now: number): void {
     S.d.weekPctReal = false
   }
   S.d.now = now
+  const saved = saverSavings()
+  S.d.savedTask = saved.task
+  S.d.savedChat = saved.chat
+  S.d.saverOn = saved.on
 
   // Usage per day: remember the weekly % last seen in each day of the week;
   // a day's usage is how much it rose since the previous day we saw.
@@ -313,7 +322,7 @@ function schedule($: EngineInterface): void {
     if (S.flushTimer) return
     const wait = Math.max(0, 1000 - (now - S.lastFlush))
     S.flushTimer = $.clock.after(wait, () => void flush($))
-  })
+  }).catch(() => undefined)
 }
 
 async function flush($: EngineInterface): Promise<void> {
@@ -387,6 +396,9 @@ function setRunning($: EngineInterface, running: boolean): void {
 
 
 export const register: Register = on => {
+  // --- token saver: condenses tool output and re-reads; reports savings here ---
+  registerSaver(on)
+
   // --- lifecycle ---
 
   on('session.start', async ($, e, next) => {
@@ -410,6 +422,11 @@ export const register: Register = on => {
     // The countdown is minute-grained; a local tick redraws it. No data is polled.
     S.minuteTimer?.cancel()
     S.minuteTimer = $.clock.every(60_000, () => schedule($))
+    try {
+      await saverSessionStart($, e.cwd)
+    } catch {
+      /* the band works without the saver */
+    }
     schedule($)
     return next(e)
   })
@@ -427,6 +444,10 @@ export const register: Register = on => {
       await loadConfig($)
       startTask(await $.clock.now())
       schedule($)
+    }
+    if (!e.isMeta && !e.command) {
+      const note = await saverPromptSubmit($)
+      if (note) return next({ ...e, context: [...(e.context ?? []), note] })
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -490,6 +511,7 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('agent.report', ($, e, next) => {
+    saverAgentReport(e.agentId)
     const h = S.d.helpers.find(x => x.id === e.agentId)
     if (h) {
       h.status = e.status === 'completed' ? 'done' : 'failed'
@@ -569,7 +591,9 @@ export const register: Register = on => {
         S.d.waiting = undefined
         schedule($)
       }
-      return r
+      // The token saver condenses the output and forgets edited files.
+      schedule($)
+      return saverAfterToolCall($, e, r).catch(() => r)
     })
   }).catch(($, e, next) => next(e))
 
@@ -801,10 +825,15 @@ export const register: Register = on => {
     const ctx = data.contextPct
     const ctxParts = (word: string): Part[] =>
       ctx === undefined ? [] : [{ t: ` · ${word} `, dim: true }, { t: `${ctx}%`, bold: true, color: tone(ctx) }]
+    // What the token saver kept out of the context this chat.
+    const saved = data.saverOn !== false ? (data.savedChat ?? 0) : 0
+    const savedParts = (word: string): Part[] =>
+      saved > 0 ? [{ t: ` · ${word} `, dim: true }, { t: fmt(saved), bold: true, color: 'success' }] : []
     const tokenText = fit(
       [
-        [taskTok, { t: ' this task · ', dim: true }, chatTok, { t: ' this chat', dim: true }, ...ctxParts('context')],
-        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...ctxParts('context')],
+        [taskTok, { t: ' this task · ', dim: true }, chatTok, { t: ' this chat', dim: true }, ...savedParts('saved'), ...ctxParts('context')],
+        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...savedParts('saved'), ...ctxParts('context')],
+        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...savedParts('saved'), ...ctxParts('ctx')],
         [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...ctxParts('ctx')],
         [taskTok, { t: ' task', dim: true }, ...ctxParts('ctx')],
         [taskTok, ...ctxParts('ctx')],

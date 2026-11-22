@@ -59,6 +59,12 @@ export type BandData = {
   fiveHourResetAt?: number
   /** How full the context window is, 0-100, when known. */
   contextPct?: number
+  /** Tokens the token saver kept out of the context this task (estimate). */
+  savedTask?: number
+  /** Tokens the token saver kept out of the context this chat (estimate). */
+  savedChat?: number
+  /** False when the token saver is turned off. */
+  saverOn?: boolean
   /** This week's usage by day: what was used before the band started counting, then one entry per day so far. */
   days?: WeekDays
   /** What Claude is waiting on you for (a permission, a question); absent when it isn't. */

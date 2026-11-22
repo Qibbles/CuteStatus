@@ -2,6 +2,8 @@
 
 A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
 
+Under the hood, its **token saver** cuts what Claude has to read: it condenses noisy tool output, skips re-reading files that haven't changed, and keeps replies short. The band shows how much it saved.
+
 ![The CuteStatus band: working, waiting for you, and idle](docs/band.png)
 
 ## What it shows
@@ -12,7 +14,7 @@ The band is three lines tall:
 |---|---|
 | **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end are the **days of the week so far**, each name in the colour of its part of the bar (`Mo Tu We Th`). Today is in bold. |
 | **Task** | How far along the current task is, from Claude's to-do list, and **how long it has taken**: `3/6 · 4m 12s · Writing the README`. If there's no to-do list, it counts the steps Claude has taken and names the last one. When Claude is **waiting on you**, it says so: `⏸ waiting for you: allow Bash?`. |
-| **Token** | Tokens used by this task (including any helpers), by the whole chat so far, and how full Claude's **context window** is: `12.4k this task · 412k this chat · context 68%`. When the context gets near full, Claude summarises the chat to make room and can lose detail, so a high number is a hint to start a fresh chat for a new topic. |
+| **Token** | Tokens used by this task (including any helpers), by the whole chat so far, what the **token saver** kept out of the chat, and how full Claude's **context window** is: `12.4k this task · 412k this chat · saved 38k · context 68%`. When the context gets near full, Claude summarises the chat to make room and can lose detail, so a high number is a hint to start a fresh chat for a new topic. |
 
 The bars:
 
@@ -54,6 +56,53 @@ Kibbles' mood follows your weekly usage:
 | Under 50% | 1 sweat drop, relaxed spin | smiling |
 | 50–80% | 2 sweat drops, faster spin | straight face |
 | Over 80% | 3 sweat drops, eyes spinning backwards | worried, with a sweat drop |
+
+## Token saver
+
+Everything runs locally and never calls the model. It works in four ways.
+
+**1. Noisy output is condensed.** Before Claude sees the output of a shell command or an MCP tool, the saver:
+
+- strips colour codes and progress bars;
+- collapses runs of repeated log lines (`[998 similar lines collapsed, not shown]`);
+- keeps the start and end of very long output (`[840 lines trimmed]`);
+- shortens huge JSON values and lists.
+
+Lines containing **error, fail, warn, traceback, exception, panic, fatal or assert are never removed**. Number-only data, such as `seq` output or a numeric CSV, is never collapsed. Claude is told that the hidden lines were not shown and must not be guessed, and that adding the comment `# nofilter` to a command gets the full output.
+
+**2. Unchanged files aren't read twice.** If Claude reads a file again and nothing has changed, it gets a one-line note to use what it already has.
+
+- If it asks again straight away, the read goes through.
+- If the file has changed, Claude gets just the diff, provided the diff is small. Edits still work afterwards.
+- The main chat and each helper are tracked separately.
+- After an edit or a compaction, the next read is a full one.
+
+**3. Terse replies.** A short style instruction asks for no preamble, no restating the question, no closing recap, and code changes shown as diffs. It never shortens code, commands or error messages. It's set once at the start of a chat, in the system prompt, so it doesn't break Claude's prompt cache. Switching it mid-chat sends a single note instead.
+
+**4. Savings shown in the band and on request.**
+
+| Command | What it does |
+|---|---|
+| `/savings` | Tokens saved this task, this chat and all time, split into condensed output and skipped reads |
+| `/terse [on\|off\|status] [--project]` | Terse replies on or off, for you or for this project only |
+| `/tokensaver [on\|off\|status] [--global]` | The whole token saver on or off for this project (or `--global` for all projects); `status` shows every setting |
+| `/tokensaver set <key> <value> [--global]` | Change one setting, e.g. `/tokensaver set filter.maxLines 400` |
+
+The commands answer instantly and don't use a model turn.
+
+**Measured savings** (estimated at ~4 characters a token; no error lines lost in any case):
+
+| Output | Before | After | Saved |
+|---|---:|---:|---:|
+| A pytest run of 900 tests with 1 failure | 15,373 | 314 | 98% |
+| 300 log lines with 1 error | 4,384 | 106 | 98% |
+| pip install with progress bars | 965 | 65 | 93% |
+| A 120-item GitHub API response | 56,102 | 4,180 | 93% |
+| A coloured cargo build | 428 | 50 | 88% |
+| A 16-step coding session (output + re-reads) | 92,201 | 11,122 | 88% |
+| Output that was already short | – | – | 0% |
+
+How much you save depends on how noisy your tools are: test runners, builds, logs, API JSON and re-reads save the most.
 
 ## Install
 
@@ -102,6 +151,34 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 | `weeklyTokenLimit` | Only used if your plan doesn't report its weekly limit (see below). Your weekly allowance in tokens, as a guess. |
 | `resetDay`, `resetTime` | Only used in the same case. When your week resets, e.g. `"mon"` and `"09:00"`. |
 | `utcOffsetHours` | The timezone for `resetDay` and `resetTime`, in hours from UTC (8 for Singapore, 0 for London in winter, -5 for New York in winter). It defaults to your computer's timezone. |
+| `tokenSaver` | The token saver's settings (below). |
+
+### Token saver settings
+
+They go in a `"tokenSaver"` section. Put it in `~/.claude/cute-status.json` for all projects, or in `.claude/cute-status.json` inside a project for that project only; the project's file wins. `/tokensaver status` shows the settings in effect.
+
+```json
+{ "tokenSaver": { "enabled": true, "terse": true, "filter": { "maxLines": 400 } } }
+```
+
+| Setting | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | The whole token saver |
+| `terse` | `true` | Terse replies |
+| `filter.enabled` | `true` | Condensing tool output |
+| `filter.tools` | `["Bash", "mcp__.*"]` | Which tools' output is condensed (patterns matched against the tool name) |
+| `filter.maxLines` | `200` | Longer output keeps only its start and end… |
+| `filter.headLines`, `filter.tailLines` | `60`, `60` | …this many lines of each |
+| `filter.maxLineChars` | `2000` | A longer single line is cut in the middle |
+| `filter.minRepeat` | `3` | How many repeated lines it takes to collapse them (runs of 4 or more actually shrink) |
+| `filter.jsonMaxString`, `filter.jsonMaxArray` | `400`, `30` | JSON values and lists longer than this are shortened |
+| `filter.minSavingsTokens` | `30` | Output is left untouched unless it saves at least this many tokens |
+| `filter.protectPattern` | `error\|fail\|warn\|…` | Lines matching this are never removed |
+| `filter.stripAnsi`, `filter.stripProgress`, `filter.collapseRepeats` | `true` | Each step on its own |
+| `dedupe.enabled` | `true` | Skipping unchanged re-reads |
+| `dedupe.diff` | `true` | Sending a diff for a changed file |
+| `dedupe.maxDiffRatio` | `0.5` | Only when the diff is smaller than this share of the file |
+| `dedupe.minTokens` | `150` | Smaller reads are never skipped |
 
 ## Where the numbers come from
 
@@ -113,9 +190,9 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 ## Costs and privacy
 
-- **Free to run:** it never calls the model, so it uses **zero tokens**.
+- **Free to run:** it never calls the model, so it uses **zero tokens**, and the token saver cuts the tokens Claude reads.
 - **Updates on events:** it updates when something happens (a message, a tool call, a usage change). It never polls, and redraws at most once a second.
-- **Stays on your computer:** everything runs locally. Nothing is sent anywhere, and the only file it writes is its own settings file.
+- **Stays on your computer:** everything runs locally. Nothing is sent anywhere. The only files it writes are its own settings files: `~/.claude/cute-status.json`, and a project's `.claude/cute-status.json` when you change a setting for that project.
 
 ## Where it works
 
@@ -134,7 +211,7 @@ claude plugin validate .
 claude plugin test .
 ```
 
-The band lives in `hooks/register.tsx` and Kibbles in `hooks/mascot.ts`. The frames in `assets/` are the terminal's pictures of Kibbles.
+The band lives in `hooks/register.tsx` and Kibbles in `hooks/mascot.ts`. The token saver is in `hooks/saver/`: `filters.ts` (output condensing), `dedupe.ts` and `diff.ts` (re-reads), `saver.ts` (its hooks and commands), each with a `*.test.ts` file. Every filter has fixture-based tests, including checks that no error line is ever lost. The frames in `assets/` are the terminal's pictures of Kibbles.
 
 ## License
 
