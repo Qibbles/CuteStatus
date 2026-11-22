@@ -481,47 +481,53 @@ export const register: Register = on => {
     const helperIds = new Set(helpers.map(h => h.id))
     const isMine = (s: Step) => !s.owner || !helperIds.has(s.owner)
 
-    // Task bar: alone, green to red as it fills; with helpers, each one's
-    // finished to-do items in its colour, yours in blue.
-    // A helper with no to-do list counts as one item, done when it finishes.
+    // Each worker's share of the task: you (blue) and each helper. A helper
+    // with no to-do list counts as one item, done when it finishes.
+    const workers = hasHelpers
+      ? [
+          {
+            done: data.steps.filter(s => s.status === 'completed' && isMine(s)).length,
+            total: data.steps.filter(isMine).length,
+            color: YOU_COLOR,
+          },
+          ...helpers.map((h, i) => {
+            const own = data.steps.filter(s => s.owner === h.id)
+            return own.length > 0
+              ? { done: own.filter(s => s.status === 'completed').length, total: own.length, color: helperColor(h, i) }
+              : { done: h.status === 'running' ? 0 : 1, total: 1, color: helperColor(h, i) }
+          }),
+        ]
+      : []
+    const doneAll = workers.reduce((n, w) => n + w.done, 0)
+    const totalAll = workers.reduce((n, w) => n + w.total, 0)
+    const taskLabel = hasHelpers && totalAll > 0 ? `${doneAll}/${totalAll}` : tLabel
+
+    // Task bar: fills toward 100% as items get done. Alone it goes green to
+    // red; with helpers, the filled part is coloured by who finished what.
     const tSegs: Seg[] =
-      hasHelpers
-        ? lanes(
-            [
-              {
-                done: data.steps.filter(s => s.status === 'completed' && isMine(s)).length,
-                total: data.steps.filter(isMine).length,
-                color: YOU_COLOR,
-              },
-              ...helpers.map((h, i) => {
-                const own = data.steps.filter(s => s.owner === h.id)
-                return own.length > 0
-                  ? { done: own.filter(s => s.status === 'completed').length, total: own.length, color: helperColor(h, i) }
-                  : { done: h.status === 'running' ? 0 : 1, total: 1, color: helperColor(h, i) }
-              }),
-            ],
-            W,
+      hasHelpers && totalAll > 0
+        ? segments(
+            workers.map(w => ({ weight: w.done, color: w.color })),
+            Math.round((doneAll / totalAll) * W),
           )
         : [{ len: Math.round((Math.min(100, tPct) / 100) * W), color: total > 0 ? tone(tPct) : 'suggestion' }]
 
-    // Token bar: the same idea, split by who used the tokens.
+    // Helpers bar: the Task bar in detail, one lane per worker sized by its
+    // share of the items, solid for done and a light shade for still to do.
+    const hSegs: Seg[] = hasHelpers ? lanes(workers, W) : []
+
+    // Token bar: alone, the task's tokens against the soft cap. With helpers
+    // the whole bar is this task's tokens, split by who used what share.
     const kPct = (data.taskTokens / data.taskCap) * 100
-    const kCells = Math.round((Math.min(100, kPct) / 100) * W)
     const kSegs: Seg[] = hasHelpers
       ? segments(
           [
             { weight: mainTokens, color: YOU_COLOR },
             ...helpers.map((h, i) => ({ weight: h.tokens, color: helperColor(h, i) })),
           ],
-          kCells,
+          data.taskTokens > 0 ? W : 0,
         )
-      : [{ len: kCells, color: tone(kPct) }]
-
-    // Helpers bar: one equal slice per finished helper, in its colour.
-    const hSegs = segments(
-      helpers.map((h, i) => ({ weight: h.status === 'running' ? 0 : 1, color: helperColor(h, i) })),
-      hasHelpers ? Math.round((hDone / helpers.length) * W) : 0,
-    )
+      : [{ len: Math.round((Math.min(100, kPct) / 100) * W), color: tone(kPct) }]
 
     // The Helpers row doubles as the colour key: ■ you, then each helper.
     const legend: { key: string; color: string; text: string }[] = hasHelpers
@@ -619,18 +625,8 @@ export const register: Register = on => {
             'Task',
             tSegs,
             [
-              <Text key="a" bold>{` ${tLabel} `}</Text>,
+              <Text key="a" bold>{` ${taskLabel} `}</Text>,
               <Text key="b">{curText}</Text>,
-            ],
-          )}
-          {row(
-            'Token',
-            kSegs,
-            [
-              <Text key="a" bold>{` ${fmt(data.taskTokens)}`}</Text>,
-              <Text key="b" dimColor>{' this task · '}</Text>,
-              <Text key="c" bold>{fmt(data.chatTokens ?? data.taskTokens)}</Text>,
-              <Text key="d" dimColor>{' this chat'}</Text>,
             ],
           )}
           {hasHelpers
@@ -646,6 +642,16 @@ export const register: Register = on => {
                 ),
               ])
             : null}
+          {row(
+            'Token',
+            kSegs,
+            [
+              <Text key="a" bold>{` ${fmt(data.taskTokens)}`}</Text>,
+              <Text key="b" dimColor>{' this task · '}</Text>,
+              <Text key="c" bold>{fmt(data.chatTokens ?? data.taskTokens)}</Text>,
+              <Text key="d" dimColor>{' this chat'}</Text>,
+            ],
+          )}
         </Box>
       </Box>
     )

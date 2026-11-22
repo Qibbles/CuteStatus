@@ -54,6 +54,8 @@ test('helpers get their own row and a token split', async ($, on) => {
         scroll: { offset: 0, bodyRows: 10 }, view: {} },
     })
     expect((await ui.find({ type: 'Text', text: /30k this task/ }))?.text).toContain('30k this task · 250k this chat')
+    // 1 of your 3 items, 1 of helper A's 2, and helper B (no list) finished.
+    expect(await ui.find({ type: 'Text', text: /^ 3\/6 $/ })).toBeTruthy()
     const helpers = (await ui.find({ type: 'Text', text: /1\/2 done/ }))?.text ?? ''
     expect(helpers).toContain('■ you 1/3 · 6k')
     expect(helpers).toContain('■ Build sites 1-5 1/2 · 15k')
