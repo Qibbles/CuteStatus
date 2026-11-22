@@ -77,6 +77,6 @@ export type BandData = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'cute-status': { data: BandData | null }
+    kibbles: { data: BandData | null }
   }
 }

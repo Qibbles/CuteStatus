@@ -55,16 +55,20 @@ export function saverSessionStart(cwd: string): void {
 
 /**
  * From the band's settings load: `section` is the `tokenSaver` part of
- * ~/.claude/cute-status.json; a project's .claude/cute-status.json overrides it.
+ * ~/.claude/kibbles.json; a project's .claude/kibbles.json (or, from before the
+ * rename, .claude/cute-status.json) overrides it.
  */
 export async function saverLoadConfig($: EngineInterface, section: unknown): Promise<void> {
   let project: unknown
   if (T.cwd) {
-    try {
-      project = (JSON.parse(String(await $.fs.read(`${T.cwd}/.claude/cute-status.json`))) as { tokenSaver?: unknown })
-        ?.tokenSaver
-    } catch {
-      /* no project settings */
+    for (const name of ['kibbles.json', 'cute-status.json']) {
+      try {
+        project = (JSON.parse(String(await $.fs.read(`${T.cwd}/.claude/${name}`))) as { tokenSaver?: unknown })
+          ?.tokenSaver
+        break
+      } catch {
+        /* no project settings under this name */
+      }
     }
   }
   T.cfg = resolveConfig(section, project)
@@ -185,7 +189,7 @@ export function registerSaver(on: On): void {
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
     if (!T.terseLatched) return r
-    return { sections: [...r.sections, { id: 'cute-status:terse', text: TERSE_ON, scope: 'session' as const }] }
+    return { sections: [...r.sections, { id: 'kibbles:terse', text: TERSE_ON, scope: 'session' as const }] }
   }).catch(($, e, next) => next(e))
 
   // Compaction rebuilds the conversation: what was read is no longer in it.

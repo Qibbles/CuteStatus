@@ -1,15 +1,15 @@
 {
-  "name": "cutestatus",
-  "description": "CuteStatus: a cute live usage band for Claude Code.",
+  "name": "kibbles",
+  "description": "Kibbles - Usage HUD & Token Saver for Claude Code.",
   "owner": {
     "name": "Qibbles",
     "url": "https://github.com/Qibbles"
   },
   "plugins": [
     {
-      "name": "cute-status",
+      "name": "kibbles",
       "source": "./",
-      "description": "Weekly usage, task progress and task tokens in a tiny band above the prompt, with Kibbles, an animated frog mascot, and a built-in token saver."
+      "description": "Kibbles - Usage HUD & Token Saver: weekly and 5-hour limits, task progress, tokens and context in a tiny band above the prompt, with an animated frog and a built-in token saver."
     }
   ]
 }

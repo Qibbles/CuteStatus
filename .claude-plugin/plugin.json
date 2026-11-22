@@ -1,7 +1,8 @@
 {
-  "name": "cute-status",
-  "version": "2.2.0",
-  "description": "A tiny live band above the Claude Code prompt: weekly and 5-hour limits with a day-by-day chart, task progress and timer, tokens and context, helpers in colour, and Kibbles the frog. Its built-in token saver condenses noisy tool output, skips unchanged re-reads and keeps replies terse, and shows what it saved.",
+  "name": "kibbles",
+  "displayName": "Kibbles - Usage HUD & Token Saver",
+  "version": "3.0.0",
+  "description": "Kibbles the frog's heads-up display above the Claude Code prompt: weekly and 5-hour limits by day, task progress and timer, tokens and context, helpers in colour, and a built-in token saver that condenses noisy tool output, skips unchanged re-reads, keeps replies terse and shows what it saved.",
   "author": {
     "name": "Qibbles",
     "url": "https://github.com/Qibbles"
@@ -10,14 +11,16 @@
   "repository": "https://github.com/Qibbles/CuteStatus",
   "license": "MIT",
   "keywords": [
-    "usage",
-    "status",
-    "rate-limit",
+    "context",
+    "hud",
+    "kibbles",
     "mascot",
     "progress",
-    "tokens",
+    "rate-limit",
+    "status",
     "token-saver",
-    "context"
+    "tokens",
+    "usage"
   ],
   "types": "./types/index.d.ts"
 }

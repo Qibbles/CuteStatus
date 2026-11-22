@@ -23,7 +23,7 @@ const props = (cols: number, isWorking = false) => ({
 test('the band draws its three rows and the mascot', async ($, on) => {
   on('state.get', () => ({ value: { value: data, version: 1 } }))
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'cute-status', surface, component: 'AbovePrompt', props: props(140) })
+    const ui = await $.ui.mount({ plugin: 'kibbles', surface, component: 'AbovePrompt', props: props(140) })
     expect((await ui.find({ type: 'Text', text: /85%/ }))?.text).toContain('85% used · resets in 2d 5h 13m')
     expect((await ui.find({ type: 'Text', text: /1\/3/ }))?.text).toContain('Writing config')
     expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text).toContain('12.4k this task · 12.4k this chat')
@@ -43,7 +43,7 @@ test('5-hour limit, day chart, task timer and context', async ($, on) => {
     taskStart: NOW - 252_000, taskEnd: 0, isRunning: true,
   }
   on('state.get', () => ({ value: { value: more, version: 1 } }))
-  const ui = await $.ui.mount({ plugin: 'cute-status', surface: 'desktop', component: 'AbovePrompt', props: props(200, true) })
+  const ui = await $.ui.mount({ plugin: 'kibbles', surface: 'desktop', component: 'AbovePrompt', props: props(200, true) })
   const week = (await ui.find({ type: 'Text', text: /85%/ }))?.text ?? ''
   expect(week).toContain('· 5h 23% (resets 1h 40m)')
   expect(week).toContain('  Mo Tu We')
@@ -54,7 +54,7 @@ test('5-hour limit, day chart, task timer and context', async ($, on) => {
 
 test('waiting on you shows in the task row', async ($, on) => {
   on('state.get', () => ({ value: { value: { ...data, waiting: 'allow Bash?', isRunning: true }, version: 1 } }))
-  const ui = await $.ui.mount({ plugin: 'cute-status', surface: 'desktop', component: 'AbovePrompt', props: props(160, true) })
+  const ui = await $.ui.mount({ plugin: 'kibbles', surface: 'desktop', component: 'AbovePrompt', props: props(160, true) })
   expect((await ui.find({ type: 'Text', text: /1\/3/ }))?.text).toContain('⏸ waiting for you: allow Bash?')
   await ui.unmount()
 })
@@ -75,7 +75,7 @@ test('helpers join the task row as a colour key, and split the tokens', async ($
   }
   on('state.get', () => ({ value: { value: withHelpers, version: 1 } }))
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'cute-status', surface, component: 'AbovePrompt', props: props(220, true) })
+    const ui = await $.ui.mount({ plugin: 'kibbles', surface, component: 'AbovePrompt', props: props(220, true) })
     expect((await ui.find({ type: 'Text', text: /30k this task/ }))?.text).toContain('30k this task · 250k this chat')
     // 1 of your 3 items, 1 of helper A's 2, and helper B (no list) finished.
     const task = (await ui.find({ type: 'Text', text: /^ 3\/6/ }))?.text ?? ''
@@ -110,7 +110,7 @@ test('long text never spills: rows get terser as the band narrows', async ($, on
     current = variant
     for (const cols of [50, 70, 100, 140, 220]) {
       for (const surface of ['terminal', 'desktop'] as const) {
-        const ui = await $.ui.mount({ plugin: 'cute-status', surface, component: 'AbovePrompt', props: props(cols, true) })
+        const ui = await $.ui.mount({ plugin: 'kibbles', surface, component: 'AbovePrompt', props: props(cols, true) })
         // Mascot 8 + gap 1 + label 9 + gap 1, then the bar (at least 8 cells).
         const textRoom = cols - 8 - 1 - 9 - 1 - 8
         for (const re of [/% /, /^ \d+\/\d+/, /k task|k this task|^ 30k/]) {

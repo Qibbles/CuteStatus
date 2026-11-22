@@ -9,7 +9,7 @@ import type { FilterConfig } from './config'
 export const estimate = (text: string): number => (text ? Math.ceil(text.length / 4) : 0)
 
 export const RAW_HINT =
-  '[cute-status token saver: output condensed. Omitted lines were not shown to you; never reconstruct ' +
+  '[Kibbles token saver: output condensed. Omitted lines were not shown to you; never reconstruct ' +
   "or guess them. If you need them, re-run the command with the comment '# nofilter'.]"
 
 export type FilterResult = { text: string; before: number; after: number; changed: boolean }

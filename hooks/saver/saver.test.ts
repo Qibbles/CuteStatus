@@ -75,13 +75,13 @@ test('the Token row shows what the saver kept out, only when it saved something'
   let data: object = { ...band, savedChat: 38_200, saverOn: true }
   on('state.get', () => ({ value: { value: data, version: 1 } }))
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'cute-status', surface, component: 'AbovePrompt', props: props(160) })
+    const ui = await $.ui.mount({ plugin: 'kibbles', surface, component: 'AbovePrompt', props: props(160) })
     expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text).toContain('12.4k this task · 412k this chat · saved 38.2k · context 68%')
     await ui.unmount()
   }
   for (const quiet of [{ ...band, savedChat: 0 }, { ...band, savedChat: 500, saverOn: false }]) {
     data = quiet
-    const ui = await $.ui.mount({ plugin: 'cute-status', surface: 'terminal', component: 'AbovePrompt', props: props(160) })
+    const ui = await $.ui.mount({ plugin: 'kibbles', surface: 'terminal', component: 'AbovePrompt', props: props(160) })
     expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text ?? '').not.toContain('saved')
     await ui.unmount()
   }

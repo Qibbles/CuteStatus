@@ -1,10 +1,10 @@
-# CuteStatus 🐸
+# Kibbles - Usage HUD & Token Saver 🐸
 
-A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
+A Claude Code plugin (formerly CuteStatus) that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
 
 Under the hood, its **token saver** cuts what Claude has to read: it condenses noisy tool output, skips re-reading files that haven't changed, and keeps replies short. The band shows how much it saved.
 
-![The CuteStatus band: working, waiting for you, and idle](docs/band.png)
+![The Kibbles band: working, waiting for you, and idle](docs/band.png)
 
 ## What it shows
 
@@ -18,7 +18,7 @@ The band is three lines tall:
 
 The bars:
 
-- **Week:** split into days, each day in its own colour, matching the coloured day names in the text. You can see which days used the most. Grey is usage from before CuteStatus started counting this week.
+- **Week:** split into days, each day in its own colour, matching the coloured day names in the text. You can see which days used the most. Grey is usage from before Kibbles started counting this week.
 - **Task and Token:** turn from **green** to **amber** to **red** as they fill. The 5-hour limit and the context window use the same colours in their text.
 
 ## Helpers (subagents)
@@ -100,7 +100,7 @@ How much you save depends on how noisy your tools are: test runners, builds, log
 You need [Claude Code](https://claude.com/claude-code). In a Claude Code session, type:
 
 ```
-/plugin install cute-status --marketplace Qibbles/CuteStatus
+/plugin install kibbles --marketplace Qibbles/CuteStatus
 ```
 
 Answer `y` to add the marketplace, then press Enter to install it for your user. The band appears right away.
@@ -108,7 +108,7 @@ Answer `y` to add the marketplace, then press Enter to install it for your user.
 Or from a shell:
 
 ```bash
-claude plugin install cute-status --marketplace Qibbles/CuteStatus
+claude plugin install kibbles --marketplace Qibbles/CuteStatus
 ```
 
 In the Claude desktop app, where `/plugin` doesn't run: click **+** next to the prompt box, then **Plugins**, **Add marketplace**, enter `Qibbles/CuteStatus`, then **Add plugin**.
@@ -116,15 +116,29 @@ In the Claude desktop app, where `/plugin` doesn't run: click **+** next to the 
 ## Turn it off or remove it
 
 - **Hide it for a moment:** press `ctrl+x` then `ctrl+a`, or click the `[-]` beside the band. Do the same to bring it back.
-- **Turn it off or remove it:** type `/plugin`, choose **cute-status** from your installed plugins, then **Disable** or **Uninstall**. From a shell:
+- **Turn it off or remove it:** type `/plugin`, choose **kibbles** from your installed plugins, then **Disable** or **Uninstall**. From a shell:
+
+```bash
+claude plugin uninstall kibbles
+```
+
+## Upgrading from CuteStatus
+
+This plugin used to be called **cute-status**. If you installed it under that name, remove the old one and install the new one:
 
 ```bash
 claude plugin uninstall cute-status
 ```
 
+```bash
+claude plugin install kibbles --marketplace Qibbles/CuteStatus
+```
+
+Your settings carry over: on first run, Kibbles copies `~/.claude/cute-status.json` to `~/.claude/kibbles.json`. A project's `.claude/cute-status.json` keeps working too.
+
 ## Settings
 
-On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes apply on your next message.
+On first run it creates `~/.claude/kibbles.json`. Edit it any time; changes apply on your next message.
 
 ```json
 {
@@ -146,7 +160,7 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 ### Token saver settings
 
-They go in a `"tokenSaver"` section. Put it in `~/.claude/cute-status.json` for all projects, or in `.claude/cute-status.json` inside a project for that project only; the project's file wins. Changes apply on your next message. To turn the token saver off, set `"enabled": false`.
+They go in a `"tokenSaver"` section. Put it in `~/.claude/kibbles.json` for all projects, or in `.claude/kibbles.json` inside a project for that project only; the project's file wins. Changes apply on your next message. To turn the token saver off, set `"enabled": false`.
 
 ```json
 { "tokenSaver": { "enabled": true, "terse": true, "filter": { "maxLines": 400 } } }
@@ -173,11 +187,11 @@ They go in a `"tokenSaver"` section. Put it in `~/.claude/cute-status.json` for 
 
 ## Where the numbers come from
 
-- **Week:** comes straight from your Claude plan's real weekly limit, which Claude subscriptions report. If your plan doesn't report one (for example, API-key billing), CuteStatus estimates it from the tokens it has counted and the settings above, and adds **(est.)** to the row.
+- **Week:** comes straight from your Claude plan's real weekly limit, which Claude subscriptions report. If your plan doesn't report one (for example, API-key billing), Kibbles estimates it from the tokens it has counted and the settings above, and adds **(est.)** to the row.
 - **5-hour limit and context:** reported by Claude Code itself, so they're real figures. They appear once the first reply of a chat has come back.
-- **Days:** CuteStatus notes your weekly percentage as the days go by, so it can only split days it was running for. Usage from before it started counting shows as grey.
+- **Days:** Kibbles notes your weekly percentage as the days go by, so it can only split days it was running for. Usage from before it started counting shows as grey.
 - **Task:** read from Claude's own to-do list as it updates.
-- **Token:** the new input and output tokens of every request in the task, including every helper's. "This chat" counts from when CuteStatus started running in that chat. Tokens served from Claude's prompt cache aren't counted, so this is "new work done", not everything the model read.
+- **Token:** the new input and output tokens of every request in the task, including every helper's. "This chat" counts from when Kibbles started running in that chat. Tokens served from Claude's prompt cache aren't counted, so this is "new work done", not everything the model read.
 
 ## Costs and privacy
 

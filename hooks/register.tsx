@@ -13,12 +13,12 @@ import {
 } from './saver/saver'
 
 // ---------------------------------------------------------------------------
-// cute-status: a 3-line band above the prompt. Everything is local: it reads
+// Kibbles: a 3-line band above the prompt. Everything is local: it reads
 // engine events (rate-limit measurements, model-step usage, tool calls) and a
 // JSON config file. It never calls the model.
 // ---------------------------------------------------------------------------
 
-const DATA = { plugin: 'cute-status', key: 'data' } as const
+const DATA = { plugin: 'kibbles', key: 'data' } as const
 const STORE_KEY = 'weekly-estimate'
 const DAILY_KEY = 'weekly-by-day'
 const DAY = 24 * 3600_000
@@ -46,7 +46,7 @@ const DEFAULT_CONFIG: Config = {
 }
 
 const CONFIG_NOTE =
-  'cute-status config. weeklyTokenLimit, resetDay, resetTime and utcOffsetHours are used only when your plan does ' +
+  'Kibbles config. weeklyTokenLimit, resetDay, resetTime and utcOffsetHours are used only when your plan does ' +
   'not report its real weekly limit (Claude subscriptions do). taskTokenSoftCap sets how full the Token bar looks. ' +
   'tokenSaver holds the token saver settings (see the README).'
 
@@ -238,11 +238,28 @@ const S = {
 
 async function configPath($: EngineInterface): Promise<string> {
   const home = (await $.env.get('HOME')) ?? '/root'
-  return `${home}/.claude/cute-status.json`
+  return `${home}/.claude/kibbles.json`
+}
+
+/** The plugin was called cute-status before: carry its settings file over once. */
+async function migrateConfig($: EngineInterface, path: string): Promise<void> {
+  try {
+    await $.fs.stat(path)
+    return
+  } catch {
+    /* no kibbles.json yet */
+  }
+  try {
+    const old = String(await $.fs.read(path.replace(/kibbles\.json$/, 'cute-status.json')))
+    await $.fs.write(path, old.replace(/cute-status config\./, 'Kibbles config.'))
+  } catch {
+    /* nothing to carry over */
+  }
 }
 
 async function loadConfig($: EngineInterface): Promise<void> {
   const path = await configPath($)
+  await migrateConfig($, path)
   let saverSection: unknown
   try {
     const raw = JSON.parse(String(await $.fs.read(path))) as Partial<Config> & { tokenSaver?: unknown }

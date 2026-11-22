@@ -1,5 +1,5 @@
-// Token saver settings: the `tokenSaver` section of ~/.claude/cute-status.json,
-// overridden per project by the same section of <project>/.claude/cute-status.json.
+// Token saver settings: the `tokenSaver` section of ~/.claude/kibbles.json,
+// overridden per project by the same section of <project>/.claude/kibbles.json.
 
 export type FilterConfig = {
   enabled: boolean
