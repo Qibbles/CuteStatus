@@ -111,14 +111,9 @@ function sweat(animated: boolean): string {
 }
 
 // --- mood cues, the same in every pose -------------------------------------
-// Happy (under 50% weekly): a floating note or heart, rosy cheeks, no sweat.
+// Happy (under 50% weekly): a floating note or heart, no sweat.
 // Neutral (50-80%): the plain look. Worried (over 80%): blue worry lines on
-// the forehead, red flushed cheeks, furrowed brows and sweat.
-
-function cheeks(mood: Mood): string {
-  const [fill, op, rx] = mood === 'worried' ? ['#ff5a5a', 0.6, 6] : mood === 'happy' ? ['#f48fb1', 0.6, 5.5] : ['#f4a7b4', 0.35, 5]
-  return [33, 67].map(x => `<ellipse cx="${x}" cy="55" rx="${rx}" ry="2.8" fill="${fill}" fill-opacity="${op}"/>`).join('')
-}
+// the forehead, furrowed brows and sweat.
 
 /** Manga worry lines on the forehead, between the eye bumps. */
 function gloom(animated: boolean): string {
@@ -317,7 +312,7 @@ function sleep(mood: Mood, animated: boolean, frame: number): string {
   return (
     `<g>${restless}` +
     legs() +
-    `<g>${breathe}${arms}${silhouette()}${eyes}${cheeks(mood)}${mood === 'worried' ? brows + gloom(animated) : ''}` +
+    `<g>${breathe}${arms}${silhouette()}${eyes}${mood === 'worried' ? brows + gloom(animated) : ''}` +
     `${sleepMouth(mood, animated, frame)}${belly}${bubble}${pop}</g></g>` +
     z(0) +
     z(1) +
@@ -371,7 +366,6 @@ function wait(mood: Mood, animated: boolean, frame: number): string {
     waveArm +
     silhouette() +
     eyes +
-    cheeks(mood) +
     (mood === 'worried' ? brows + gloom(animated) : '') +
     mouth +
     belly +

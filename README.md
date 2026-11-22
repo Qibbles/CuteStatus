@@ -127,9 +127,9 @@ Kibbles' mood follows your weekly usage, and each mood looks clearly different:
 
 | Weekly usage | Working | Waiting for you | Napping |
 |---|---|---|---|
-| **Under 50%**: happy | A green ♪ floats up; relaxed typing; slow spin; no sweat | Open smile, yellow "!" | Smiling, rosy cheeks, a pink ♥ floats up |
+| **Under 50%**: happy | A green ♪ floats up; relaxed typing; slow spin; no sweat | Open smile, yellow "!" | Smiling, a pink ♥ floats up |
 | **50–80%**: neutral | One sweat drop; normal typing | Little "o" mouth, yellow "!" | Calm, straight mouth |
-| **Over 80%**: worried | Blue worry lines, steam puffing off its head, three sweat drops, frantic typing, nervous jitter, eyes spinning backwards | Worry lines, furrowed brows, red cheeks, wobbly frown, sweat, red "!!" | Worry lines, furrowed brows, red cheeks, sweat, tossing and turning |
+| **Over 80%**: worried | Blue worry lines, steam puffing off its head, three sweat drops, frantic typing, nervous jitter, eyes spinning backwards | Worry lines, furrowed brows, wobbly frown, sweat, red "!!" | Worry lines, furrowed brows, sweat, tossing and turning |
 
 ## Install
 
