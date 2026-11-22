@@ -75,26 +75,46 @@ const YOU_COLOR = '#4f86c6'
 const HELPER_COLORS = ['#e07a5f', '#2fb5a3', '#b07cd8', '#e0a020', '#d4609a', '#7aa63c']
 const helperColor = (h: Helper, i: number) => HELPER_COLORS[(h.color ?? i) % HELPER_COLORS.length] ?? YOU_COLOR
 
-type Seg = { len: number; color: string }
+/** A run of bar cells: solid, or `shade` for the light part of a lane. */
+type Seg = { len: number; color: string; shade?: boolean }
 
-/** Splits `cells` filled cells among the parts by weight (largest remainder). */
-function segments(parts: { weight: number; color: string }[], cells: number): Seg[] {
-  const live = parts.filter(p => p.weight > 0)
-  const sum = live.reduce((n, p) => n + p.weight, 0)
-  if (sum <= 0 || cells <= 0) return []
-  const exact = live.map(p => (p.weight / sum) * cells)
-  const segs = live.map((p, i) => ({ len: Math.floor(exact[i] ?? 0), color: p.color }))
-  let left = cells - segs.reduce((n, x) => n + x.len, 0)
+/** Splits `cells` among the weights by largest remainder; same order back. */
+function allot(weights: number[], cells: number): number[] {
+  const sum = weights.reduce((n, w) => n + Math.max(0, w), 0)
+  if (sum <= 0 || cells <= 0) return weights.map(() => 0)
+  const exact = weights.map(w => (Math.max(0, w) / sum) * cells)
+  const out = exact.map(x => Math.floor(x))
+  let left = cells - out.reduce((n, x) => n + x, 0)
   const order = exact.map((x, i) => [x - Math.floor(x), i] as const).sort((a, b) => b[0] - a[0])
   for (const [, i] of order) {
     if (left <= 0) break
-    const seg = segs[i]
-    if (seg) {
-      seg.len += 1
-      left -= 1
-    }
+    out[i] = (out[i] ?? 0) + 1
+    left -= 1
   }
-  return segs.filter(x => x.len > 0)
+  return out
+}
+
+/** Splits `cells` filled cells among the parts by weight. */
+function segments(parts: { weight: number; color: string }[], cells: number): Seg[] {
+  const lens = allot(parts.map(p => p.weight), cells)
+  return parts.map((p, i) => ({ len: lens[i] ?? 0, color: p.color })).filter(x => x.len > 0)
+}
+
+/**
+ * One lane per worker across the whole bar, as wide as its share of the to-do
+ * items: the finished part solid in its colour, the rest a light shade of it.
+ */
+function lanes(parts: { done: number; total: number; color: string }[], cells: number): Seg[] {
+  const live = parts.filter(p => p.total > 0)
+  const widths = allot(live.map(p => p.total), cells)
+  return live.flatMap((p, i) => {
+    const width = widths[i] ?? 0
+    const solid = Math.min(width, Math.round((p.done / p.total) * width))
+    return [
+      { len: solid, color: p.color },
+      { len: width - solid, color: p.color, shade: true },
+    ].filter(x => x.len > 0)
+  })
 }
 
 async function loadPngs($: EngineInterface): Promise<void> {
@@ -463,17 +483,24 @@ export const register: Register = on => {
 
     // Task bar: alone, green to red as it fills; with helpers, each one's
     // finished to-do items in its colour, yours in blue.
+    // A helper with no to-do list counts as one item, done when it finishes.
     const tSegs: Seg[] =
-      total > 0 && hasHelpers
-        ? segments(
+      hasHelpers
+        ? lanes(
             [
-              { weight: data.steps.filter(s => s.status === 'completed' && isMine(s)).length, color: YOU_COLOR },
-              ...helpers.map((h, i) => ({
-                weight: data.steps.filter(s => s.status === 'completed' && s.owner === h.id).length,
-                color: helperColor(h, i),
-              })),
+              {
+                done: data.steps.filter(s => s.status === 'completed' && isMine(s)).length,
+                total: data.steps.filter(isMine).length,
+                color: YOU_COLOR,
+              },
+              ...helpers.map((h, i) => {
+                const own = data.steps.filter(s => s.owner === h.id)
+                return own.length > 0
+                  ? { done: own.filter(s => s.status === 'completed').length, total: own.length, color: helperColor(h, i) }
+                  : { done: h.status === 'running' ? 0 : 1, total: 1, color: helperColor(h, i) }
+              }),
             ],
-            Math.round((done / total) * W),
+            W,
           )
         : [{ len: Math.round((Math.min(100, tPct) / 100) * W), color: total > 0 ? tone(tPct) : 'suggestion' }]
 
@@ -499,7 +526,13 @@ export const register: Register = on => {
     // The Helpers row doubles as the colour key: ■ you, then each helper.
     const legend: { key: string; color: string; text: string }[] = hasHelpers
       ? [
-          { key: 'you', color: YOU_COLOR, text: `you ${fmt(mainTokens)}` },
+          {
+            key: 'you',
+            color: YOU_COLOR,
+            text: data.steps.some(isMine)
+              ? `you ${data.steps.filter(s => s.status === 'completed' && isMine(s)).length}/${data.steps.filter(isMine).length} · ${fmt(mainTokens)}`
+              : `you ${fmt(mainTokens)}`,
+          },
           ...helpers.map((h, i) => {
             const own = data.steps.filter(s => s.owner === h.id)
             const progress = own.length > 0
@@ -556,7 +589,7 @@ export const register: Register = on => {
           <Text mono>
             {segs.map((g, i) => (
               <Text key={`s${i}`} color={g.color}>
-                {'█'.repeat(g.len)}
+                {(g.shade ? '░' : '█').repeat(g.len)}
               </Text>
             ))}
             <Text dimColor>{'░'.repeat(Math.max(0, W - segs.reduce((n, g) => n + g.len, 0)))}</Text>

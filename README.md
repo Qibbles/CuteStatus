@@ -15,11 +15,14 @@ The band is three lines tall, plus a fourth while helpers are working:
 | **Token** | Tokens used by the current task (including any helpers) and by the whole chat so far: `30k this task · 412k this chat`. The task count starts again from zero each time you send a new message; the chat count keeps going. |
 | **Helpers** | Only shown while Claude has handed parts of the task to helpers (subagents). It's also the colour key: `■ you`, then one `■` per helper with its job, its progress and its tokens. A `✓` means that helper has finished, a `✗` that it failed. The bar fills as helpers finish. |
 
-Each bar turns from **green** to **amber** to **red** as it fills. While helpers are working, the Task and Token bars switch to **one colour per worker** instead: blue for you (the main conversation) and a different colour for each helper. You can see at a glance who finished which to-do items and who used which tokens.
+Each bar turns from **green** to **amber** to **red** as it fills. While helpers are working, the Task and Token bars switch to **one colour per worker** instead: blue for you (the main conversation) and a different colour for each helper.
+
+- **Task bar:** split into one lane per worker, as wide as its share of the to-do items. The solid part of a lane is what that worker has finished; the light, dotted part is what it still has to do. So a helper at `2/5` shows two-fifths solid, and a finished helper's lane is solid all the way.
+- **Token bar:** shows how the task's tokens divide between you and each helper.
 
 ![The band with two helpers at work](docs/helpers.png)
 
-**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task row counts all 10 to-do items together. The Task and Token bars are split into blue (Claude itself) and one colour per helper. The Helpers row shows each helper's own progress (`3/5`) and tokens, next to its colour. A helper with no to-do list shows how many steps it has taken instead.
+**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task row counts all 10 to-do items together. The Task bar gets a blue lane for Claude itself and a lane per helper, each filling up as that worker finishes its items; the Token bar splits the tokens the same way. The Helpers row shows each helper's own progress (`3/5`) and tokens, next to its colour. A helper with no to-do list shows how many steps it has taken instead.
 
 ## Meet the frog
 
