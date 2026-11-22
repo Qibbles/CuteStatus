@@ -1,3 +1,5 @@
 {
+  // Kibbles: type-check with `tsc -p .` once Claude Code has loaded the plugin
+  // and written its types to .claude-plugin/types/.
   "extends": "./.claude-plugin/types/tsconfig.json"
 }

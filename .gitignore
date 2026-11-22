@@ -1,4 +1,8 @@
+# Written by Claude Code when the plugin loads (its type definitions)
 .claude-plugin/types/
+# Packaged builds: attach kibbles.plugin to a GitHub release instead
+*.plugin
+# OS, editor and log noise
 .DS_Store
 *.log
 .mcpb-cache/
