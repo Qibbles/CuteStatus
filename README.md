@@ -1,6 +1,6 @@
 # CuteStatus 🐸
 
-A tiny, live status band that sits just above the Claude Code prompt. At a glance it shows how much of your weekly usage is gone, how far along the current task is, and how many tokens that task has used. A little frog keeps you company while you work.
+A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your weekly usage is gone, how far along the current task is, and how many tokens that task has used. A little frog keeps you company while you work.
 
 ![The CuteStatus band in dark and light themes](docs/band.png)
 
