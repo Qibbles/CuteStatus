@@ -107,6 +107,8 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 ## Where it works
 
+The band fits any width. On a narrow window each row switches to shorter wording (`85% used · resets in 2d 5h` becomes `85% · 2d 5h`). Long names are trimmed with `…`; file paths are trimmed in the middle so you still see the file name. If there are more helpers than fit, the last entry reads `+N more`.
+
 - **Claude Code desktop app and IDE extensions:** the frog is an animated drawing.
 - **Terminal:** the frog is drawn as small pictures where your terminal supports images. Otherwise it's a tiny text face, `(@ω@)` when working or `(-‿-) z` when napping.
 

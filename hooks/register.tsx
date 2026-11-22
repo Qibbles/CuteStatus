@@ -75,6 +75,43 @@ const YOU_COLOR = '#4f86c6'
 const HELPER_COLORS = ['#e07a5f', '#2fb5a3', '#b07cd8', '#e0a020', '#d4609a', '#7aa63c']
 const helperColor = (h: Helper, i: number) => HELPER_COLORS[(h.color ?? i) % HELPER_COLORS.length] ?? YOU_COLOR
 
+/** A piece of a row's text and how it is drawn. */
+type Part = { t: string; bold?: boolean; dim?: boolean; color?: string }
+
+const partsLen = (parts: Part[]) => parts.reduce((n, p) => n + p.t.length, 0)
+
+/** Cuts text to `max` characters with an ellipsis: in the middle for paths. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text
+  if (max <= 1) return '…'
+  if (text.includes('/') && max >= 9) {
+    const head = Math.ceil((max - 1) / 2)
+    return text.slice(0, head) + '…' + text.slice(text.length - (max - 1 - head))
+  }
+  return text.slice(0, max - 1) + '…'
+}
+
+/**
+ * The longest wording that fits `room`: each row offers its wordings from
+ * fullest to tersest, and the tersest is clipped if even it does not fit.
+ */
+function fit(variants: Part[][], room: number): Part[] {
+  for (const v of variants) if (partsLen(v) <= room) return v
+  const last = variants[variants.length - 1] ?? []
+  const out: Part[] = []
+  let left = room
+  for (const p of last) {
+    if (left <= 0) break
+    const t = clip(p.t, left)
+    out.push({ ...p, t })
+    left -= t.length
+  }
+  return out
+}
+
+/** "3d 7h 51m" → "3d 7h": the two largest units. */
+const shortSpan = (span: string) => span.split(' ').slice(0, 2).join(' ')
+
 /** A run of bar cells: solid, or `shade` for the light part of a lane. */
 type Seg = { len: number; color: string; shade?: boolean }
 
@@ -447,8 +484,14 @@ export const register: Register = on => {
 
     const cols = e.props.bodyColumns
     const LABEL = 9
-    // Bars take a fair share of the band's width so the rows spread across it.
-    const W = Math.max(10, Math.min(60, Math.floor((cols - MASCOT_COLS - LABEL) * 0.42)))
+    // Bars take a fair share of the band's width so the rows spread across it,
+    // but always leave the text at least ~28 cells; narrow bands get short bars.
+    const avail = Math.max(0, cols - MASCOT_COLS - 1 - LABEL - 1)
+    const W = Math.max(8, Math.min(48, Math.floor(avail * 0.36), avail - 28))
+    // The text's room, with a margin for proportional fonts (desktop, mobile)
+    // whose letters can run wider than a terminal cell.
+    const proportional = e.surface !== 'terminal'
+    const room = Math.max(8, Math.floor((avail - W) * (proportional ? 0.88 : 1)) - 1)
     const running = data.isRunning || e.props.isWorking
 
     // Row 1: weekly
@@ -458,7 +501,17 @@ export const register: Register = on => {
     // "estimate" appears only when the plan's real figure is not available.
     const pctText = (n: number) => `${n.toFixed(n > 0 && n < 10 ? 1 : 0)}%`
     const isEstimate = !data.weekPctReal || !data.resetReal
-    const weekExtra = ` used · ${pctText(Math.max(0, 100 - wPct))} left · resets in ${left}${isEstimate ? ' (estimate)' : ''}`
+    const pctBold: Part = { t: ` ${pctText(wPct)}`, bold: true }
+    const weekText = fit(
+      [
+        [pctBold, { t: ` used · ${pctText(Math.max(0, 100 - wPct))} left · resets in ${left}${isEstimate ? ' (estimate)' : ''}`, dim: true }],
+        [pctBold, { t: ` used · resets in ${left}${isEstimate ? ' (est.)' : ''}`, dim: true }],
+        [pctBold, { t: ` · resets ${shortSpan(left)}${isEstimate ? ' est.' : ''}`, dim: true }],
+        [pctBold, { t: ` · ${shortSpan(left)}`, dim: true }],
+        [pctBold],
+      ],
+      room,
+    )
 
     // Row 2: task progress
     const total = data.steps.length
@@ -470,8 +523,6 @@ export const register: Register = on => {
       (total > 0 ? 'all done' : data.lastTool || (running ? 'thinking…' : 'idle'))
     const tPct = total > 0 ? (done / total) * 100 : running ? ((data.frame % 5) + 1) * 20 : 0
     const tLabel = total > 0 ? `${done}/${total}` : `${data.toolCalls} calls`
-    const room = Math.max(8, cols - MASCOT_COLS - LABEL - W - tLabel.length - 5)
-    const curText = current.length > room ? current.slice(0, room - 1) + '…' : current
 
     // Helpers (subagents) on this task, each with its own colour.
     const helpers = data.helpers ?? []
@@ -501,6 +552,8 @@ export const register: Register = on => {
     const doneAll = workers.reduce((n, w) => n + w.done, 0)
     const totalAll = workers.reduce((n, w) => n + w.total, 0)
     const taskLabel = hasHelpers && totalAll > 0 ? `${doneAll}/${totalAll}` : tLabel
+    // The current step takes whatever room the count leaves, clipped neatly.
+    const taskText = fit([[{ t: ` ${taskLabel}`, bold: true }, { t: ` ${current}` }]], room)
 
     // Task bar: fills toward 100% as items get done. Alone it goes green to
     // red; with helpers, the filled part is coloured by who finished what.
@@ -530,37 +583,78 @@ export const register: Register = on => {
       : [{ len: Math.round((Math.min(100, kPct) / 100) * W), color: tone(kPct) }]
 
     // The Helpers row doubles as the colour key: ■ you, then each helper.
-    const legend: { key: string; color: string; text: string }[] = hasHelpers
+    // When it does not fit, it gets terser step by step: shorter names, then
+    // no names, then progress alone, then as many as fit and "+N more".
+    const entries = hasHelpers
       ? [
           {
             key: 'you',
             color: YOU_COLOR,
-            text: data.steps.some(isMine)
-              ? `you ${data.steps.filter(s => s.status === 'completed' && isMine(s)).length}/${data.steps.filter(isMine).length} · ${fmt(mainTokens)}`
-              : `you ${fmt(mainTokens)}`,
+            name: 'you',
+            mark: '',
+            progress: data.steps.some(isMine)
+              ? `${data.steps.filter(s => s.status === 'completed' && isMine(s)).length}/${data.steps.filter(isMine).length}`
+              : '',
+            tokens: fmt(mainTokens),
           },
           ...helpers.map((h, i) => {
             const own = data.steps.filter(s => s.owner === h.id)
             const progress = own.length > 0
               ? `${own.filter(s => s.status === 'completed').length}/${own.length}`
-              : `${h.calls} steps`
+              : h.status === 'running' ? `${h.calls} steps` : ''
             const state = h.status === 'done' ? ' ✓' : h.status === 'failed' ? ' ✗' : ''
-            const name = h.name.length > 22 ? h.name.slice(0, 21) + '…' : h.name
-            return { key: h.id, color: helperColor(h, i), text: `${name}${state} ${progress} · ${fmt(h.tokens)}` }
+            return { key: h.id, color: helperColor(h, i), name: h.name, mark: state.trim(), progress, tokens: fmt(h.tokens) }
           }),
         ]
       : []
-    let legendRoom = Math.max(10, cols - MASCOT_COLS - LABEL - W - 14)
-    const legendShown: typeof legend = []
-    for (const item of legend) {
-      const need = item.text.length + 5
-      if (need > legendRoom) {
-        legendShown.push({ key: 'more', color: '', text: `+${legend.length - legendShown.length} more` })
-        break
+    const helpersHead: Part = { t: ` ${hDone}/${helpers.length} done`, bold: true }
+    const entryParts = (nameMax: number, withTokens: boolean) =>
+      entries.flatMap(x => {
+        const name = nameMax > 0 ? clip(x.name, Math.max(nameMax, 3)) : ''
+        const head = [name, x.mark, x.progress].filter(Boolean).join(' ')
+        const text = withTokens ? (head ? `${head} · ${x.tokens}` : x.tokens) : head || x.tokens
+        return [
+          { t: '  ■', color: x.color },
+          { t: ` ${text}`, dim: true },
+        ] as Part[]
+      })
+    const helperTiers: Part[][] = hasHelpers
+      ? [
+          [helpersHead, ...entryParts(24, true)],
+          [helpersHead, ...entryParts(12, true)],
+          [helpersHead, ...entryParts(0, true)],
+          [helpersHead, ...entryParts(0, false)],
+        ]
+      : []
+    let helperText: Part[] = helperTiers.find(v => partsLen(v) <= room) ?? []
+    if (hasHelpers && helperText.length === 0) {
+      // Even the tersest is too long: show as many entries as fit, then +N.
+      const terse = entryParts(0, false)
+      helperText = [helpersHead]
+      for (let i = 0; i + 1 < terse.length; i += 2) {
+        const pair = [terse[i], terse[i + 1]].filter((p): p is Part => p !== undefined)
+        const more = ` +${(terse.length - i) / 2} more`
+        if (partsLen(helperText) + partsLen(pair) + 8 > room) {
+          helperText.push({ t: more, dim: true })
+          break
+        }
+        helperText.push(...pair)
       }
-      legendShown.push(item)
-      legendRoom -= need
+      helperText = fit([helperText], room)
     }
+
+    // Token row: this task and the whole chat, terser when short of room.
+    const taskTok = fmt(data.taskTokens)
+    const chatTok = fmt(data.chatTokens ?? data.taskTokens)
+    const tokenText = fit(
+      [
+        [{ t: ` ${taskTok}`, bold: true }, { t: ' this task · ', dim: true }, { t: chatTok, bold: true }, { t: ' this chat', dim: true }],
+        [{ t: ` ${taskTok}`, bold: true }, { t: ' task · ', dim: true }, { t: chatTok, bold: true }, { t: ' chat', dim: true }],
+        [{ t: ` ${taskTok}`, bold: true }, { t: ' task', dim: true }],
+        [{ t: ` ${taskTok}`, bold: true }],
+      ],
+      room,
+    )
 
     const mood = moodFor(wPct)
     const activity: Activity = running ? 'busy' : 'sleep'
@@ -586,7 +680,7 @@ export const register: Register = on => {
         face
       )
 
-    const row = (label: string, segs: Seg[], children: unknown) => (
+    const row = (label: string, segs: Seg[], parts: Part[]) => (
       <Box flexDirection="row">
         <Box width={LABEL} flexShrink={0}>
           <Text dimColor>{label}</Text>
@@ -601,8 +695,14 @@ export const register: Register = on => {
             <Text dimColor>{'░'.repeat(Math.max(0, W - segs.reduce((n, g) => n + g.len, 0)))}</Text>
           </Text>
         </Box>
-        <Box marginLeft={1} flexGrow={1} flexShrink={1}>
-          <Text wrap="truncate-end">{children as never}</Text>
+        <Box marginLeft={1} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+          <Text wrap="truncate-end">
+            {parts.map((p, i) => (
+              <Text key={`p${i}`} bold={p.bold} dimColor={p.dim} color={p.color}>
+                {p.t}
+              </Text>
+            ))}
+          </Text>
         </Box>
       </Box>
     )
@@ -613,45 +713,10 @@ export const register: Register = on => {
           {mascot}
         </Box>
         <Box flexDirection="column" flexGrow={1}>
-          {row(
-            'Week',
-            [{ len: Math.round((Math.min(100, wPct) / 100) * W), color: tone(wPct) }],
-            [
-              <Text key="a" bold>{` ${pctText(wPct)}`}</Text>,
-              <Text key="b" dimColor>{weekExtra}</Text>,
-            ],
-          )}
-          {row(
-            'Task',
-            tSegs,
-            [
-              <Text key="a" bold>{` ${taskLabel} `}</Text>,
-              <Text key="b">{curText}</Text>,
-            ],
-          )}
-          {hasHelpers
-            ? row('Helpers', hSegs, [
-                <Text key="a" bold>{` ${hDone}/${helpers.length} done `}</Text>,
-                ...legendShown.flatMap(item =>
-                  item.key === 'more'
-                    ? [<Text key="more" dimColor>{` ${item.text}`}</Text>]
-                    : [
-                        <Text key={`m-${item.key}`} color={item.color}>{' ■ '}</Text>,
-                        <Text key={`t-${item.key}`} dimColor>{item.text}</Text>,
-                      ],
-                ),
-              ])
-            : null}
-          {row(
-            'Token',
-            kSegs,
-            [
-              <Text key="a" bold>{` ${fmt(data.taskTokens)}`}</Text>,
-              <Text key="b" dimColor>{' this task · '}</Text>,
-              <Text key="c" bold>{fmt(data.chatTokens ?? data.taskTokens)}</Text>,
-              <Text key="d" dimColor>{' this chat'}</Text>,
-            ],
-          )}
+          {row('Week', [{ len: Math.round((Math.min(100, wPct) / 100) * W), color: tone(wPct) }], weekText)}
+          {row('Task', tSegs, taskText)}
+          {hasHelpers ? row('Helpers', hSegs, helperText) : null}
+          {row('Token', kSegs, tokenText)}
         </Box>
       </Box>
     )

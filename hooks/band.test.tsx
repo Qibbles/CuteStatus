@@ -17,7 +17,7 @@ test('the band draws three aligned rows and the mascot', async ($, on) => {
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({
       plugin: 'cute-status', surface, component: 'AbovePrompt',
-      props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 100,
+      props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 140,
         scroll: { offset: 0, bodyRows: 10 }, view: {} },
     })
     expect((await ui.find({ type: 'Text', text: /85%/ }))?.text).toContain('85% used · 15% left · resets in 2d 5h 13m')
@@ -55,11 +55,11 @@ test('helpers get their own row and a token split', async ($, on) => {
     })
     expect((await ui.find({ type: 'Text', text: /30k this task/ }))?.text).toContain('30k this task · 250k this chat')
     // 1 of your 3 items, 1 of helper A's 2, and helper B (no list) finished.
-    expect(await ui.find({ type: 'Text', text: /^ 3\/6 $/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /^ 3\/6$/ })).toBeTruthy()
     const helpers = (await ui.find({ type: 'Text', text: /1\/2 done/ }))?.text ?? ''
     expect(helpers).toContain('■ you 1/3 · 6k')
     expect(helpers).toContain('■ Build sites 1-5 1/2 · 15k')
-    expect(helpers).toContain('■ Build sites 6-10 ✓ 4 steps · 9k')
+    expect(helpers).toContain('■ Build sites 6-10 ✓ · 9k')
     await ui.unmount()
   }
 })
@@ -74,4 +74,37 @@ test('no helpers, no helpers row', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /Helpers/ })).toBeFalsy()
   expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text).not.toContain('you')
   await ui.unmount()
+})
+
+test('long text never spills: rows get terser as the band narrows', async ($, on) => {
+  const busy = {
+    ...data,
+    taskTokens: 30_000, mainTokens: 6_000, chatTokens: 412_000, helperSeq: 2,
+    steps: [
+      { id: '1', name: 'Refactoring /home/someone/projects/very-long-folder-name/src/components/Header.tsx', status: 'in_progress' as const },
+      { id: 'a1', name: 'Site 1', status: 'completed' as const, owner: 'agent-a' },
+    ],
+    helpers: [
+      { id: 'agent-a', name: 'Build the first five marketing sites', tokens: 15_000, calls: 9, status: 'running' as const, color: 0 },
+      { id: 'agent-b', name: 'Build the other five marketing sites', tokens: 9_000, calls: 4, status: 'done' as const, color: 1 },
+      { id: 'agent-c', name: 'Write the copy', tokens: 2_000, calls: 2, status: 'running' as const, color: 2 },
+    ],
+  }
+  on('state.get', () => ({ value: { value: busy, version: 1 } }))
+  for (const cols of [50, 70, 100, 140, 220]) {
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({
+        plugin: 'cute-status', surface, component: 'AbovePrompt',
+        props: { hasSurvey: false, isCollapsed: false, isWorking: true, maxRows: 10, bodyColumns: cols,
+          scroll: { offset: 0, bodyRows: 10 }, view: {} },
+      })
+      // Mascot 8 + gap 1 + label 9 + gap 1, then the bar (at least 8 cells).
+      const textRoom = cols - 8 - 1 - 9 - 1 - 8
+      for (const re of [/% /, /^ \d+\/\d+ /, /done/, /k task|k this task|^ 30k$/]) {
+        const t = (await ui.find({ type: 'Text', text: re }))?.text ?? ''
+        expect(t.length).toBeLessThanOrEqual(Math.max(8, textRoom))
+      }
+      await ui.unmount()
+    }
+  }
 })
