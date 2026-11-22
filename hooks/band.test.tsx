@@ -46,7 +46,8 @@ test('5-hour limit, day chart, task timer and context', async ($, on) => {
   const ui = await $.ui.mount({ plugin: 'kibbles', surface: 'desktop', component: 'AbovePrompt', props: props(200, true) })
   const week = (await ui.find({ type: 'Text', text: /85%/ }))?.text ?? ''
   expect(week).toContain('· 5h 23% (resets 1h 40m)')
-  expect(week).toContain('  Mo Tu We')
+  // Only days with measured usage, each with its share, plus the earlier grey part.
+  expect(week).toContain('· earlier 40% Mo 10% Tu 20% We 15%')
   expect((await ui.find({ type: 'Text', text: /1\/3/ }))?.text).toContain('1/3 · 4m 12s · Writing config')
   expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text).toContain('· context 68%')
   await ui.unmount()
@@ -141,5 +142,24 @@ test('the router shows what it split off, and which model each helper runs on', 
   expect(task).toContain('Summarise the docs · haiku')
   // Same model as the main conversation: no label.
   expect(task).not.toContain('Design the API · opus')
+  await ui.unmount()
+})
+
+test('a tight band still names "you" and never shortens "context"', async ($, on) => {
+  const tight = {
+    ...data,
+    steps: [], taskTokens: 7_400, mainTokens: 2_200, chatTokens: 75_600, helperSeq: 2, contextPct: 60, mainModel: 'opus',
+    helpers: [
+      { id: 'a', name: 'Research the competitor pricing pages', tokens: 4_000, calls: 5, status: 'done' as const, color: 0, model: 'haiku' },
+      { id: 'b', name: 'Summarise the support tickets from last month', tokens: 1_200, calls: 2, status: 'running' as const, color: 1, model: 'haiku' },
+    ],
+    isRunning: true,
+  }
+  on('state.get', () => ({ value: { value: tight, version: 1 } }))
+  const ui = await $.ui.mount({ plugin: 'kibbles', surface: 'desktop', component: 'AbovePrompt', props: props(110, true) })
+  expect((await ui.find({ type: 'Text', text: /^ 1\/2/ }))?.text).toContain('■ you')
+  const token = (await ui.find({ type: 'Text', text: /7\.4k/ }))?.text ?? ''
+  expect(token).toContain('context 60%')
+  expect(token).not.toContain('ctx')
   await ui.unmount()
 })

@@ -22,7 +22,8 @@ import { modelFamily, routerLoadConfig, routerPlan, routerSessionStart, routerSp
 
 const DATA = { plugin: 'kibbles', key: 'data' } as const
 const STORE_KEY = 'weekly-estimate'
-const DAILY_KEY = 'weekly-by-day'
+// Calendar days (in the configured time zone) since the week began.
+const DAILY_KEY = 'weekly-by-date'
 const DAY = 24 * 3600_000
 const WEEK = 7 * 24 * 3600_000
 const MASCOT_COLS = 8
@@ -305,12 +306,15 @@ function recompute(now: number): void {
   S.d.savedChat = saved.chat
   S.d.saverOn = saved.on
 
-  // Usage per day: remember the weekly % last seen in each day of the week;
-  // a day's usage is how much it rose since the previous day we saw.
-  const slot = Math.max(0, Math.min(6, Math.floor((now - periodStart) / DAY)))
+  // Usage per day: remember the weekly % last seen on each calendar day of
+  // the week (in the configured time zone); a day's usage is how much it rose
+  // since the previous day we saw. A week can touch 8 calendar days.
+  const offset = S.cfg.utcOffsetHours * 3600_000
+  const dayOf = (t: number) => Math.floor((t + offset) / DAY)
+  const slot = Math.max(0, Math.min(7, dayOf(now) - dayOf(periodStart)))
   const pct = S.d.weekPct
-  if (S.daily.periodStart !== periodStart) {
-    S.daily = { periodStart, firstSlot: slot, firstPct: pct, marks: [null, null, null, null, null, null, null] }
+  if (S.daily.periodStart !== periodStart || S.daily.marks.length !== 8) {
+    S.daily = { periodStart, firstSlot: slot, firstPct: pct, marks: [null, null, null, null, null, null, null, null] }
     S.dailyDirty = true
   }
   if ((S.daily.marks[slot] ?? -1) < pct) {
@@ -325,7 +329,7 @@ function recompute(now: number): void {
     const fromHere = i >= S.daily.firstSlot && mark !== null && mark !== undefined
     used.push(fromHere ? Math.max(0, mark - last) : 0)
     if (fromHere) last = mark
-    weekday.push(new Date(periodStart + i * DAY + S.cfg.utcOffsetHours * 3600_000).getUTCDay())
+    weekday.push(new Date((dayOf(periodStart) + i) * DAY).getUTCDay())
   }
   S.d.days = { before: S.daily.firstPct, used, weekday }
   if (S.realFiveHour) {
@@ -684,26 +688,32 @@ export const register: Register = on => {
             { t: pctText(fivePct), bold: true, color: tone(fivePct) },
             ...(long && fiveLeft ? [{ t: ` (resets ${shortSpan(fiveLeft)})`, dim: true }] : []),
           ]
-    // The day key: each day's name in that day's colour, matching its part
-    // of the bar; today in bold.
-    const chart = (): Part[] =>
-      !days || !days.used.some(u => u > 0)
-        ? []
-        : [
-            { t: ' ', dim: true },
-            ...days.used.map((_, i): Part => ({
-              t: ` ${DAY_LETTERS[days.weekday[i] ?? 0]}`,
-              color: dayColor(days.weekday[i] ?? 0),
-              bold: i === days.used.length - 1,
-            })),
-          ]
+    // The day key: only days with measured usage, each name in its colour
+    // matching its part of the bar (today in bold), plus "earlier" for the
+    // grey part: usage from before Kibbles started counting this week.
+    const chart = (withPct: boolean): Part[] => {
+      if (!days || !days.used.some(u => u > 0)) return []
+      const pctOf = (n: number) => (withPct ? ` ${pctText(n)}` : '')
+      const parts: Part[] = [{ t: ' ·', dim: true }]
+      if (days.before > 0) parts.push({ t: ` earlier${pctOf(days.before)}`, color: EARLIER_COLOR })
+      days.used.forEach((u, i) => {
+        if (u <= 0) return
+        parts.push({
+          t: ` ${DAY_LETTERS[days.weekday[i] ?? 0]}${pctOf(u)}`,
+          color: dayColor(days.weekday[i] ?? 0),
+          bold: i === days.used.length - 1,
+        })
+      })
+      return parts
+    }
     const pctBold: Part = { t: ` ${pctText(wPct)}`, bold: true }
     const est = isEstimate ? ' (est.)' : ''
     const weekText = fit(
       [
-        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(true), ...chart()],
-        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(false), ...chart()],
-        [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false), ...chart()],
+        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(true), ...chart(true)],
+        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(false), ...chart(true)],
+        [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false), ...chart(true)],
+        [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false), ...chart(false)],
         [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false)],
         [pctBold, ...five(false)],
         [pctBold],
@@ -793,7 +803,8 @@ export const register: Register = on => {
       : []
     const entryParts = (nameMax: number, withTokens: boolean) =>
       entries.flatMap(x => {
-        const name = nameMax > 0 ? clip(x.name, Math.max(nameMax, 3)) : ''
+        // "you" is always named, so the blue in the bars is never a mystery.
+        const name = x.key === 'you' ? 'you' : nameMax > 0 ? clip(x.name, Math.max(nameMax, 3)) : ''
         // The helper's model shows when it is not the main one's: "· haiku".
         const label = [name, x.model ? `· ${x.model}` : '', x.mark, x.progress].filter(Boolean).join(' ')
         const text = withTokens ? (label ? `${label} · ${x.tokens}` : x.tokens) : label || x.tokens
@@ -820,6 +831,8 @@ export const register: Register = on => {
         [head, ...timer, ...entryParts(24, true)],
         [head, ...timer, ...entryParts(12, true)],
         [head, ...entryParts(12, true)],
+        [head, ...entryParts(8, true)],
+        [head, ...entryParts(8, false)],
         [head, ...entryParts(0, true)],
         [head, ...entryParts(0, false)],
       ]
@@ -876,10 +889,10 @@ export const register: Register = on => {
       [
         [taskTok, { t: ' this task · ', dim: true }, chatTok, { t: ' this chat', dim: true }, ...savedParts('saved'), ...ctxParts('context')],
         [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...savedParts('saved'), ...ctxParts('context')],
-        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...savedParts('saved'), ...ctxParts('ctx')],
-        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...ctxParts('ctx')],
-        [taskTok, { t: ' task', dim: true }, ...ctxParts('ctx')],
-        [taskTok, ...ctxParts('ctx')],
+        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...ctxParts('context')],
+        [taskTok, { t: ' task', dim: true }, ...savedParts('saved'), ...ctxParts('context')],
+        [taskTok, { t: ' task', dim: true }, ...ctxParts('context')],
+        [taskTok, ...ctxParts('context')],
         [taskTok],
       ],
       room,

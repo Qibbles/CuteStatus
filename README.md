@@ -90,9 +90,9 @@ The band is three lines tall:
 
 | Row | What it means |
 |---|---|
-| **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end are the **days of the week so far**, each name in the colour of its part of the bar (`Mo Tu We Th`). Today is in bold. |
+| **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end is how much each **day** used, each name in the colour of its part of the bar (`· earlier 40% We 8% Th 12% Fr 3%`), with today in bold. **Earlier** (grey) is usage from before Kibbles started counting this week. Days with nothing measured are left out. |
 | **Task** | How far along the current task is, from Claude's to-do list, and **how long it has taken**: `3/6 · 4m 12s · Writing the README`. If there's no to-do list, it counts the steps Claude has taken and names the last one. When Claude is **waiting on you**, it says so: `⏸ waiting for you: allow Bash?`. |
-| **Token** | Tokens used by this task (including any helpers), by the whole chat so far, what the **token saver** kept out of the chat, and how full Claude's **context window** is: `12.4k this task · 412k this chat · saved 38k · context 68%`. When the context gets near full, Claude summarises the chat to make room and can lose detail, so a high number is a hint to start a fresh chat for a new topic. |
+| **Token** | Tokens used by this task (including any helpers), by the whole chat so far, what the **token saver** kept out of the chat, and how full Claude's **context window** is: `12.4k this task · 412k this chat · saved 38k · context 68%` (on a narrow window: `12.4k task · 412k chat · context 68%`). When the context gets near full, Claude summarises the chat to make room and can lose detail, so a high number is a hint to start a fresh chat for a new topic. |
 
 The bars:
 
@@ -106,7 +106,7 @@ When Claude hands parts of a task to helpers, the band shows who's doing what, w
 ![The band with two helpers at work](docs/helpers.png)
 
 - **Task bar:** one lane per worker, as wide as its share of the to-do items. The solid part of a lane is what that worker has finished; the light, dotted part in the same colour is what it still has to do. A helper at `2/5` is two-fifths solid, and a finished helper's lane is solid all the way.
-- **Task text:** becomes the colour key: `■ you 1/2 · 6k`, then each helper's job, its own progress and its tokens. `✓` means that helper has finished, `✗` that it failed. A helper with no to-do list shows how many steps it has taken instead.
+- **Task text:** becomes the colour key: `■ you 1/2 · 6k` (you = Claude in the main chat), then each helper's job, its own progress and its tokens. On a narrow window helper names get shorter, but **you** is always named. `✓` means that helper has finished, `✗` that it failed. A helper with no to-do list shows how many steps it has taken instead.
 - **Token bar:** the whole bar is this task's tokens, split by who used what share. With no helpers, it instead fills against `taskTokenSoftCap`.
 
 **An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task bar shows each helper's lane filling up, so you can see at a glance who's done and who still has work left. The key shows each helper's own `2/5` or `✓ 5/5`. The Token bar shows that the coral helper used half of the task's tokens.
