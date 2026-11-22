@@ -1,6 +1,6 @@
 # Kibbles - Usage HUD & Token Saver 🐸
 
-A Claude Code plugin that makes your usage limits last longer and shows you, at a glance, where they're going. Kibbles, the little frog, that saves you tokens and keeps you company while you work.
+A Claude Code plugin that makes your usage limits last longer and shows you, at a glance, where they're going. Meet Kibbles, the little frog who saves you tokens and keeps you company while you work.
 
 It does three things, all automatically:
 
