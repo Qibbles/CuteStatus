@@ -1,6 +1,6 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { BandData, Step } from '../types'
+import type { BandData, Helper, Step } from '../types'
 import { type Activity, mascotSvg, moodFor, textFace } from './mascot'
 
 // ---------------------------------------------------------------------------
@@ -99,6 +99,8 @@ function freshData(cfg: Config): BandData {
     toolCalls: 0,
     lastTool: '',
     taskTokens: 0,
+    mainTokens: 0,
+    helpers: [],
     taskCap: cfg.taskTokenSoftCap,
     isRunning: false,
     frame: 0,
@@ -203,9 +205,21 @@ function readRateLimits(list: readonly { kind: string; percentUsed: number; rese
 
 function startTask(): void {
   S.d.taskTokens = 0
+  S.d.mainTokens = 0
+  // Helpers still running carry on into the new task, counted afresh.
+  S.d.helpers = S.d.helpers.filter(h => h.status === 'running').map(h => ({ ...h, tokens: 0, calls: 0 }))
   S.d.toolCalls = 0
   S.d.lastTool = ''
   if (S.d.steps.length > 0 && S.d.steps.every(s => s.status === 'completed')) S.d.steps = []
+}
+
+function helperFor(id: string): Helper {
+  let h = S.d.helpers.find(x => x.id === id)
+  if (!h) {
+    h = { id, name: 'helper', tokens: 0, calls: 0, status: 'running' }
+    S.d.helpers = [...S.d.helpers, h]
+  }
+  return h
 }
 
 function setRunning($: EngineInterface, running: boolean): void {
@@ -233,7 +247,9 @@ export const register: Register = on => {
     const saved = (await $.store.get(STORE_KEY)) as typeof S.estimate | undefined
     if (saved && typeof saved.tokens === 'number') S.estimate = { ...saved }
     const prev = (await $.state.get(DATA)).value
-    S.d = prev ? { ...prev, steps: [...prev.steps], isRunning: false, frame: 0 } : freshData(S.cfg)
+    S.d = prev
+      ? { ...freshData(S.cfg), ...prev, steps: [...prev.steps], helpers: [...(prev.helpers ?? [])], isRunning: false, frame: 0 }
+      : freshData(S.cfg)
     try {
       readRateLimits((await $.session.usage()).rateLimits)
     } catch {
@@ -278,11 +294,34 @@ export const register: Register = on => {
     if (r?.usage) {
       const n = r.usage.input_tokens + r.usage.output_tokens
       S.d.taskTokens += n
+      if (e.agentId === undefined) S.d.mainTokens += n
+      else helperFor(e.agentId).tokens += n
       S.estimate.tokens += n
       S.storeDirty = true
       schedule($)
     }
     return r
+  })
+
+  // --- helpers (subagents) ---
+
+  on('agent.spawn', async ($, e, next) => {
+    const r = await next(e)
+    if (r.deny === undefined && r.agentId) {
+      const h = helperFor(r.agentId)
+      h.name = e.description || e.subagentType
+      schedule($)
+    }
+    return r
+  }).catch(($, e, next) => next(e))
+
+  on('agent.report', ($, e, next) => {
+    const h = S.d.helpers.find(x => x.id === e.agentId)
+    if (h) {
+      h.status = e.status === 'completed' ? 'done' : 'failed'
+      schedule($)
+    }
+    return next(e)
   })
 
   // --- task list tracking ---
@@ -291,7 +330,7 @@ export const register: Register = on => {
     const ran = await next(e)
     if (ran.deny === undefined && !ran.isError && ran.result?.task) {
       if (S.d.steps.length > 0 && S.d.steps.every(s => s.status === 'completed')) S.d.steps = []
-      S.d.steps = [...S.d.steps, { id: ran.result.task.id, name: e.activeForm ?? e.subject, status: 'pending' }]
+      S.d.steps = [...S.d.steps, { id: ran.result.task.id, name: e.activeForm ?? e.subject, status: 'pending', owner: e.agentId }]
       schedule($)
     }
     return ran
@@ -317,11 +356,17 @@ export const register: Register = on => {
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
     const ran = await next(e)
     if (ran.deny === undefined && !ran.isError) {
-      S.d.steps = e.todos.map((t, i) => ({
-        id: `todo-${i}`,
-        name: t.status === 'in_progress' ? t.activeForm : t.content,
-        status: t.status,
-      }))
+      // A to-do list replaces only its own owner's items.
+      const owner = e.agentId
+      S.d.steps = [
+        ...S.d.steps.filter(s => s.owner !== owner),
+        ...e.todos.map((t, i) => ({
+          id: `todo-${owner ?? 'main'}-${i}`,
+          name: t.status === 'in_progress' ? t.activeForm : t.content,
+          status: t.status,
+          owner,
+        })),
+      ]
       schedule($)
     }
     return ran
@@ -329,7 +374,10 @@ export const register: Register = on => {
 
   // Fallback progress: every tool call (main loop only).
   on('tool.call', ($, e, next) => {
-    if (e.agentId === undefined) {
+    if (e.agentId !== undefined) {
+      helperFor(e.agentId).calls += 1
+      schedule($)
+    } else {
       S.d.toolCalls += 1
       const input = e as unknown as Record<string, unknown>
       const hint = ['description', 'command', 'file_path', 'pattern', 'url', 'query']
@@ -351,7 +399,7 @@ export const register: Register = on => {
     if (!data) return next(e)
 
     const cols = e.props.bodyColumns
-    const LABEL = 7
+    const LABEL = 9
     // Bars take a fair share of the band's width so the rows spread across it.
     const W = Math.max(10, Math.min(60, Math.floor((cols - MASCOT_COLS - LABEL) * 0.42)))
     const running = data.isRunning || e.props.isWorking
@@ -369,6 +417,7 @@ export const register: Register = on => {
     const total = data.steps.length
     const done = data.steps.filter(s => s.status === 'completed').length
     const current =
+      data.steps.find(s => s.status === 'in_progress' && !s.owner)?.name ??
       data.steps.find(s => s.status === 'in_progress')?.name ??
       data.steps.find(s => s.status === 'pending')?.name ??
       (total > 0 ? 'all done' : data.lastTool || (running ? 'thinking…' : 'idle'))
@@ -377,6 +426,28 @@ export const register: Register = on => {
     const tColor = total > 0 ? tone(tPct) : 'suggestion'
     const room = Math.max(8, cols - MASCOT_COLS - LABEL - W - tLabel.length - 5)
     const curText = current.length > room ? current.slice(0, room - 1) + '…' : current
+
+    // Row 4 (only while helpers are on the task): one entry per subagent.
+    const helpers = data.helpers ?? []
+    const hDone = helpers.filter(h => h.status !== 'running').length
+    const hPct = helpers.length > 0 ? (hDone / helpers.length) * 100 : 0
+    const helperText = helpers
+      .map(h => {
+        const own = data.steps.filter(s => s.owner === h.id)
+        const progress = own.length > 0
+          ? `${own.filter(s => s.status === 'completed').length}/${own.length}`
+          : `${h.calls} steps`
+        const mark = h.status === 'running' ? '●' : h.status === 'done' ? '✓' : '✗'
+        const name = h.name.length > 22 ? h.name.slice(0, 21) + '…' : h.name
+        return `${mark} ${name} ${progress} · ${fmt(h.tokens)}`
+      })
+      .join('   ')
+    const helperRoom = Math.max(10, cols - MASCOT_COLS - LABEL - W - 14)
+    const helperLine = helperText.length > helperRoom ? helperText.slice(0, helperRoom - 1) + '…' : helperText
+    const mainTokens = data.mainTokens ?? data.taskTokens
+    const split = helpers.length > 0
+      ? ` · you ${fmt(mainTokens)} + helpers ${fmt(Math.max(0, data.taskTokens - mainTokens))}`
+      : ''
 
     // Row 3: task tokens
     const kPct = (data.taskTokens / data.taskCap) * 100
@@ -452,9 +523,15 @@ export const register: Register = on => {
             tone(kPct),
             [
               <Text key="a" bold>{` ${fmt(data.taskTokens)}`}</Text>,
-              <Text key="b" dimColor>{' tokens this task'}</Text>,
+              <Text key="b" dimColor>{` tokens this task${split}`}</Text>,
             ],
           )}
+          {helpers.length > 0
+            ? row('Helpers', hPct, tone(hPct), [
+                <Text key="a" bold>{` ${hDone}/${helpers.length} done `}</Text>,
+                <Text key="b" dimColor>{helperLine}</Text>,
+              ])
+            : null}
         </Box>
       </Box>
     )

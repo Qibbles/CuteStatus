@@ -28,3 +28,45 @@ test('the band draws three aligned rows and the mascot', async ($, on) => {
     await ui.unmount()
   }
 })
+
+test('helpers get their own row and a token split', async ($, on) => {
+  const withHelpers = {
+    ...data,
+    taskTokens: 30_000,
+    mainTokens: 6_000,
+    steps: [
+      ...data.steps,
+      { id: 'a1', name: 'Site 1', status: 'completed' as const, owner: 'agent-a' },
+      { id: 'a2', name: 'Site 2', status: 'in_progress' as const, owner: 'agent-a' },
+    ],
+    helpers: [
+      { id: 'agent-a', name: 'Build sites 1-5', tokens: 15_000, calls: 9, status: 'running' as const },
+      { id: 'agent-b', name: 'Build sites 6-10', tokens: 9_000, calls: 4, status: 'done' as const },
+    ],
+  }
+  on('state.get', () => ({ value: { value: withHelpers, version: 1 } }))
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({
+      plugin: 'cute-status', surface, component: 'AbovePrompt',
+      props: { hasSurvey: false, isCollapsed: false, isWorking: true, maxRows: 10, bodyColumns: 200,
+        scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    })
+    expect((await ui.find({ type: 'Text', text: /30k tokens/ }))?.text).toContain('you 6k + helpers 24k')
+    const helpers = (await ui.find({ type: 'Text', text: /1\/2 done/ }))?.text ?? ''
+    expect(helpers).toContain('● Build sites 1-5 1/2 · 15k')
+    expect(helpers).toContain('✓ Build sites 6-10 4 steps · 9k')
+    await ui.unmount()
+  }
+})
+
+test('no helpers, no helpers row', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...data, helpers: [], mainTokens: 12400 }, version: 1 } }))
+  const ui = await $.ui.mount({
+    plugin: 'cute-status', surface: 'desktop', component: 'AbovePrompt',
+    props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 120,
+      scroll: { offset: 0, bodyRows: 10 }, view: {} },
+  })
+  expect(await ui.find({ type: 'Text', text: /Helpers/ })).toBeFalsy()
+  expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text).not.toContain('helpers')
+  await ui.unmount()
+})

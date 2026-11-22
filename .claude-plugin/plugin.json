@@ -1,6 +1,6 @@
 {
   "name": "cute-status",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A tiny live band above the Claude Code prompt: weekly usage, task progress and task tokens, with an animated frog that works while Claude works and naps when it's idle.",
   "author": { "name": "Qibbles", "url": "https://github.com/Qibbles" },
   "homepage": "https://github.com/Qibbles/CuteStatus",
