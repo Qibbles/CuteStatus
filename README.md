@@ -1,17 +1,23 @@
 # Kibbles - Usage HUD & Token Saver 🐸
 
-A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
+A Claude Code plugin that makes your usage limits last longer and shows you, at a glance, where they're going. Kibbles, a little frog, keeps you company while you work.
 
 It does two jobs:
 
-- **A heads-up display** of your weekly and 5-hour limits, task progress, tokens and context, with helpers shown in colour.
-- **A token saver** that cuts what Claude has to read, so your limits last longer. It condenses noisy tool output, skips re-reading files that haven't changed and keeps replies short. A test run that would cost Claude ~15,000 tokens to read costs ~300. The band shows how much it has saved: `saved 38k`.
+- **A heads-up display:** a tiny live band above the prompt with your weekly and 5-hour limits, task progress and timer, tokens and context, helpers in colour, and a heads-up when Claude is waiting on you.
+- **A token saver:** it cuts what Claude has to read, so your limits last longer. It condenses noisy tool output, skips re-reading files that haven't changed and keeps replies short. A test run that would cost Claude ~15,000 tokens to read costs ~300. The band shows how much it has saved: `saved 38k`.
 
 Both run on your computer and never call the model.
 
+**The heads-up display**, shown working, waiting for you, and idle:
+
 ![The Kibbles band: working, waiting for you, and idle](docs/band.png)
 
-## What it shows
+**The token saver**, on a real 900-test run: Claude reads 98% less, and the failure is kept whole.
+
+![A 900-test run: what it printed vs what Claude reads after the token saver](docs/saver.png)
+
+## 1. The heads-up display
 
 The band is three lines tall:
 
@@ -26,9 +32,19 @@ The bars:
 - **Week:** split into days, each day in its own colour, matching the coloured day names in the text. You can see which days used the most. Grey is usage from before Kibbles started counting this week.
 - **Task and Token:** turn from **green** to **amber** to **red** as they fill. The 5-hour limit and the context window use the same colours in their text.
 
-## Token saver
+### Helpers (subagents)
 
-![A 900-test run: what it printed vs what Claude reads after the token saver](docs/saver.png)
+When Claude hands parts of a task to helpers, the band shows who's doing what, with one colour per worker: blue for you (the main conversation) and a different colour for each helper.
+
+![The band with two helpers at work](docs/helpers.png)
+
+- **Task bar:** one lane per worker, as wide as its share of the to-do items. The solid part of a lane is what that worker has finished; the light, dotted part in the same colour is what it still has to do. A helper at `2/5` is two-fifths solid, and a finished helper's lane is solid all the way.
+- **Task text:** becomes the colour key: `■ you 1/2 · 6k`, then each helper's job, its own progress and its tokens. `✓` means that helper has finished, `✗` that it failed. A helper with no to-do list shows how many steps it has taken instead.
+- **Token bar:** the whole bar is this task's tokens, split by who used what share. With no helpers, it instead fills against `taskTokenSoftCap`.
+
+**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task bar shows each helper's lane filling up, so you can see at a glance who's done and who still has work left. The key shows each helper's own `2/5` or `✓ 5/5`. The Token bar shows that the coral helper used half of the task's tokens.
+
+## 2. The token saver
 
 The more Claude reads, the faster you use up your limits. The token saver works by itself, runs locally and never calls the model. It works in four ways.
 
@@ -65,18 +81,6 @@ Lines containing **error, fail, warn, traceback, exception, panic, fatal or asse
 | Output that was already short | – | – | 0% |
 
 How much you save depends on how noisy your tools are: test runners, builds, logs, API JSON and re-reads save the most.
-
-## Helpers (subagents)
-
-When Claude hands parts of a task to helpers, the band shows who's doing what, with one colour per worker: blue for you (the main conversation) and a different colour for each helper.
-
-![The band with two helpers at work](docs/helpers.png)
-
-- **Task bar:** one lane per worker, as wide as its share of the to-do items. The solid part of a lane is what that worker has finished; the light, dotted part in the same colour is what it still has to do. A helper at `2/5` is two-fifths solid, and a finished helper's lane is solid all the way.
-- **Task text:** becomes the colour key: `■ you 1/2 · 6k`, then each helper's job, its own progress and its tokens. `✓` means that helper has finished, `✗` that it failed. A helper with no to-do list shows how many steps it has taken instead.
-- **Token bar:** the whole bar is this task's tokens, split by who used what share. With no helpers, it instead fills against `taskTokenSoftCap`.
-
-**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task bar shows each helper's lane filling up, so you can see at a glance who's done and who still has work left. The key shows each helper's own `2/5` or `✓ 5/5`. The Token bar shows that the coral helper used half of the task's tokens.
 
 ## Meet Kibbles
 

@@ -1,7 +1,7 @@
 {
   "name": "kibbles",
   "displayName": "Kibbles - Usage HUD & Token Saver",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Kibbles the frog's heads-up display above the Claude Code prompt: weekly and 5-hour limits by day, task progress and timer, tokens and context, helpers in colour, and a built-in token saver that condenses noisy tool output, skips unchanged re-reads, keeps replies terse and shows what it saved.",
   "author": {
     "name": "Qibbles",
