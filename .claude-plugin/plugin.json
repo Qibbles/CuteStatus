@@ -1,7 +1,7 @@
 {
   "name": "cute-status",
-  "version": "2.1.0",
-  "description": "A tiny live band above the Claude Code prompt: weekly and 5-hour limits with a day-by-day chart, task progress and timer, tokens and context, helpers in colour, and an animated frog that works, waves when Claude needs you, and naps when idle.",
+  "version": "2.1.1",
+  "description": "A tiny live band above the Claude Code prompt: weekly and 5-hour limits with a day-by-day chart, task progress and timer, tokens and context, helpers in colour, and Kibbles, an animated frog who works, waves when Claude needs you, and naps when idle.",
   "author": {
     "name": "Qibbles",
     "url": "https://github.com/Qibbles"

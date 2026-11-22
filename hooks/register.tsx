@@ -828,10 +828,10 @@ export const register: Register = on => {
           source={mascotSvg(mood, activity, true)}
           alt={
             activity === 'wait'
-              ? 'The frog is waving: Claude is waiting for you'
+              ? 'Kibbles the frog is waving: Claude is waiting for you'
               : activity === 'busy'
-                ? `The frog is hard at work behind a computer, looking ${mood}`
-                : `The frog is asleep, looking ${mood}`
+                ? `Kibbles the frog is hard at work behind a computer, looking ${mood}`
+                : `Kibbles the frog is asleep, looking ${mood}`
           }
           width={58}
           height={58}

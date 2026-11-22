@@ -1,6 +1,6 @@
 # CuteStatus 🐸
 
-A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. A little frog keeps you company while you work.
+A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
 
 ![The CuteStatus band: working, waiting for you, and idle](docs/band.png)
 
@@ -31,23 +31,23 @@ When Claude hands parts of a task to helpers, the band shows who's doing what, w
 
 **An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task bar shows each helper's lane filling up, so you can see at a glance who's done and who still has work left. The key shows each helper's own `2/5` or `✓ 5/5`. The Token bar shows that the coral helper used half of the task's tokens.
 
-## Meet the frog
+## Meet Kibbles
 
-The frog shows what Claude is doing.
+Kibbles is a little frog who shows what Claude is doing.
 
-**Working:** while Claude is on a task, the frog sits behind a big computer, typing away, with its spiral eyes spinning and sweat dripping down.
+**Working:** while Claude is on a task, Kibbles sits behind a big computer, typing away, with its spiral eyes spinning and sweat dripping down.
 
-![The frog working behind its computer](docs/busy.gif)
+![Kibbles working behind the computer](docs/busy.gif)
 
-**Waiting for you:** when Claude needs your permission or an answer, the frog stands up and waves at you, with a "!" bubble.
+**Waiting for you:** when Claude needs your permission or an answer, Kibbles stands up and waves at you, with a "!" bubble.
 
-![The frog waving for your attention](docs/wait.gif)
+![Kibbles waving for your attention](docs/wait.gif)
 
-**Napping:** when nothing is running, it sleeps, breathing slowly, with its mouth opening into a little "o", a snore bubble and floating z's.
+**Napping:** when nothing is running, Kibbles naps, breathing slowly, with its mouth opening into a little "o", a snore bubble and floating z's.
 
-![The frog asleep](docs/sleep.gif)
+![Kibbles asleep](docs/sleep.gif)
 
-Its mood follows your weekly usage:
+Kibbles' mood follows your weekly usage:
 
 | Weekly usage | Working | Napping |
 |---|---|---|
@@ -121,8 +121,8 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 The band fits any width. On a narrow window each row switches to shorter wording (`85% used · resets in 2d 5h 13m` becomes `85% · resets 2d 5h`, then just `85%`). Long names are trimmed with `…`; file paths are trimmed in the middle so you still see the file name. If there are more helpers than fit, the last entry reads `+N more`.
 
-- **Claude Code desktop app and IDE extensions:** the frog is an animated drawing.
-- **Terminal:** the frog is drawn as small pictures where your terminal supports images. Otherwise it's a tiny text face, `(@ω@)` when working or `(-‿-) z` when napping.
+- **Claude Code desktop app and IDE extensions:** Kibbles is an animated drawing.
+- **Terminal:** Kibbles is drawn as small pictures where your terminal supports images. Otherwise it's a tiny text face, `(@ω@)` when working or `(-‿-) z` when napping.
 
 ## For developers
 
@@ -134,7 +134,7 @@ claude plugin validate .
 claude plugin test .
 ```
 
-The band lives in `hooks/register.tsx` and the frog in `hooks/mascot.ts`. The frames in `assets/` are the terminal's pictures of the frog.
+The band lives in `hooks/register.tsx` and Kibbles in `hooks/mascot.ts`. The frames in `assets/` are the terminal's pictures of Kibbles.
 
 ## License
 

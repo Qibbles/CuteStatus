@@ -1,4 +1,4 @@
-// The mascot: a chibi cream frog adapted from the user's own sock-frog plush:
+// The mascot: Kibbles, a chibi cream frog adapted from the user's own sock-frog plush:
 // spiral-stitched eye bumps, a red zigzag stitched mouth, an X belly stitch.
 // Busy (a task running): works behind a big computer, sweating.
 // Idle: asleep, eyes closed, breathing slowly, z's floating up.
