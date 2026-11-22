@@ -11,6 +11,7 @@ import type { EngineInterface, On } from 'claude-code'
 import { resolveConfig, SAVER_DEFAULTS, type SaverConfig } from './config'
 import { type Disk, hash, rangeKey, ReadTracker } from './dedupe'
 import { filterText, RAW_HINT } from './filters'
+import { routerSystemSection } from '../router/router'
 
 const TERSE_ON =
   'Response style (terse mode): answer directly. No preamble, no restating the question, no closing recap ' +
@@ -184,8 +185,12 @@ export function registerSaver(on: On): void {
   // prompt cache is never invalidated; mid-session changes go as a one-off note.
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
-    if (!T.terseLatched) return r
-    return { sections: [...r.sections, { id: 'kibbles:terse', text: TERSE_ON, scope: 'session' as const }] }
+    const sections = [...r.sections]
+    if (T.terseLatched) sections.push({ id: 'kibbles:terse', text: TERSE_ON, scope: 'session' as const })
+    // The model router's standing instruction rides here too (one compose hook per plugin).
+    const route = routerSystemSection()
+    if (route) sections.push({ id: 'kibbles:router', text: route, scope: 'session' as const })
+    return sections.length === r.sections.length ? r : { sections }
   }).catch(($, e, next) => next(e))
 
   // Compaction rebuilds the conversation: what was read is no longer in it.

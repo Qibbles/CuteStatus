@@ -11,11 +11,13 @@ import {
   saverSavings,
   saverSessionStart,
 } from './saver/saver'
+import { modelFamily, routerLoadConfig, routerPlan, routerSessionStart, routerSpawnModel } from './router/router'
 
 // ---------------------------------------------------------------------------
 // Kibbles: a 3-line band above the prompt. Everything is local: it reads
 // engine events (rate-limit measurements, model-step usage, tool calls) and a
-// JSON config file. It never calls the model.
+// JSON config file. It never calls a model itself; the model router (router/)
+// makes one small Haiku call to plan a big, multi-part request.
 // ---------------------------------------------------------------------------
 
 const DATA = { plugin: 'kibbles', key: 'data' } as const
@@ -244,9 +246,11 @@ async function configPath($: EngineInterface): Promise<string> {
 async function loadConfig($: EngineInterface): Promise<void> {
   const path = await configPath($)
   let saverSection: unknown
+  let routerSection: unknown
   try {
-    const raw = JSON.parse(String(await $.fs.read(path))) as Partial<Config> & { tokenSaver?: unknown }
+    const raw = JSON.parse(String(await $.fs.read(path))) as Partial<Config> & { tokenSaver?: unknown; router?: unknown }
     saverSection = raw.tokenSaver
+    routerSection = raw.router
     S.cfg = {
       weeklyTokenLimit: Number(raw.weeklyTokenLimit) > 0 ? Number(raw.weeklyTokenLimit) : DEFAULT_CONFIG.weeklyTokenLimit,
       resetDay: typeof raw.resetDay === 'string' ? raw.resetDay : DEFAULT_CONFIG.resetDay,
@@ -267,7 +271,11 @@ async function loadConfig($: EngineInterface): Promise<void> {
   }
   // The token saver's settings are the tokenSaver section of the same file.
   await saverLoadConfig($, saverSection)
+  routerLoadConfig(routerSection)
 }
+
+/** Running low: the 5-hour or weekly limit is past 80%. */
+const underPressure = () => (S.d.fiveHourPct ?? 0) >= 80 || S.d.weekPct >= 80
 
 // Recompute the weekly figures from what is known: real window first.
 function recompute(now: number): void {
@@ -368,6 +376,7 @@ function readContext(context: { percent?: number } | undefined): void {
 }
 
 function startTask(now: number): void {
+  S.d.routeNote = undefined
   S.d.taskStart = now
   S.d.taskEnd = 0
   S.d.waiting = undefined
@@ -414,6 +423,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     saverSessionStart(e.cwd)
+    routerSessionStart()
     await loadConfig($)
     await loadPngs($)
     const saved = (await $.store.get(STORE_KEY)) as typeof S.estimate | undefined
@@ -452,10 +462,24 @@ export const register: Register = on => {
       startTask(await $.clock.now())
       schedule($)
     }
+    if (e.isMeta || e.command) return next(e)
+    const context: string[] = []
     // Terse mode switched in the settings file mid-chat: tell Claude once.
-    const note = !e.isMeta && !e.command ? saverPromptNote() : null
-    if (note) return next({ ...e, context: [...(e.context ?? []), note] })
-    return next(e)
+    const note = saverPromptNote()
+    if (note) context.push(note)
+    // The model router: for a big multi-part request, a quick pre-read on the
+    // cheap model suggests which parts to hand to cheaper helpers.
+    const route = await routerPlan($, e.text, underPressure())
+    if (route.tokens > 0) {
+      S.d.taskTokens += route.tokens
+      S.d.mainTokens += route.tokens
+      S.d.chatTokens = (S.d.chatTokens ?? 0) + route.tokens
+      S.estimate.tokens += route.tokens
+    }
+    if (route.note) S.d.routeNote = route.note
+    context.push(...route.context)
+    schedule($)
+    return context.length > 0 ? next({ ...e, context: [...(e.context ?? []), ...context] }) : next(e)
   }).catch(($, e, next) => next(e))
 
   on('turn.start', ($, e, next) => {
@@ -490,6 +514,7 @@ export const register: Register = on => {
 
   // Token counts from every model request (main loop and subagents).
   on('turn.step', async function* ($, e, next) {
+    if (e.agentId === undefined) S.d.mainModel = modelFamily(e.model) || S.d.mainModel
     const r = yield* next(e)
     if (r?.usage) {
       const n = r.usage.input_tokens + r.usage.output_tokens
@@ -507,10 +532,15 @@ export const register: Register = on => {
   // --- helpers (subagents) ---
 
   on('agent.spawn', async ($, e, next) => {
-    const r = await next(e)
+    // The router's safety net: an easy helper with no model chosen runs on
+    // the cheaper model.
+    const routed = routerSpawnModel(e, underPressure())
+    const r = await next(routed ? { ...e, model: routed } : e)
     if (r.deny === undefined && r.agentId) {
       const h = helperFor(r.agentId)
       h.name = e.description || e.subagentType
+      h.model = modelFamily(r.model) || undefined
+      h.routed = routed !== null
       schedule($)
     }
     return r
@@ -731,6 +761,9 @@ export const register: Register = on => {
     // How long the task has taken: live while it runs, final once it ends.
     const elapsed = data.taskStart ? (data.taskEnd || data.now) - data.taskStart : 0
     const timer: Part[] = elapsed >= 1000 ? [{ t: ` · ${duration(elapsed)}`, dim: true }] : []
+    // What the model router split off: "⑂ 2 easy → haiku".
+    const rn = data.routeNote
+    const routed: Part[] = rn ? [{ t: ' · ', dim: true }, { t: `⑂ ${rn.easy} easy → ${rn.model}`, color: 'success' }] : []
     const head: Part = { t: ` ${taskLabel}`, bold: true }
 
     // With helpers, the text is the colour key: ■ you, then each helper with
@@ -742,6 +775,7 @@ export const register: Register = on => {
             color: YOU_COLOR,
             name: 'you',
             mark: '',
+            model: '',
             progress: data.steps.some(isMine)
               ? `${data.steps.filter(s => s.status === 'completed' && isMine(s)).length}/${data.steps.filter(isMine).length}`
               : '',
@@ -753,14 +787,15 @@ export const register: Register = on => {
               ? `${own.filter(s => s.status === 'completed').length}/${own.length}`
               : h.status === 'running' ? `${h.calls} steps` : ''
             const state = h.status === 'done' ? '✓' : h.status === 'failed' ? '✗' : ''
-            return { key: h.id, color: helperColor(h, i), name: h.name, mark: state, progress, tokens: fmt(h.tokens) }
+            return { key: h.id, color: helperColor(h, i), name: h.name, mark: state, model: h.model && h.model !== data.mainModel ? h.model : '', progress, tokens: fmt(h.tokens) }
           }),
         ]
       : []
     const entryParts = (nameMax: number, withTokens: boolean) =>
       entries.flatMap(x => {
         const name = nameMax > 0 ? clip(x.name, Math.max(nameMax, 3)) : ''
-        const label = [name, x.mark, x.progress].filter(Boolean).join(' ')
+        // The helper's model shows when it is not the main one's: "· haiku".
+        const label = [name, x.model ? `· ${x.model}` : '', x.mark, x.progress].filter(Boolean).join(' ')
         const text = withTokens ? (label ? `${label} · ${x.tokens}` : x.tokens) : label || x.tokens
         return [
           { t: '  ■', color: x.color },
@@ -781,6 +816,7 @@ export const register: Register = on => {
       )
     } else if (hasHelpers) {
       const tiers: Part[][] = [
+        [head, ...timer, ...routed, ...entryParts(24, true)],
         [head, ...timer, ...entryParts(24, true)],
         [head, ...timer, ...entryParts(12, true)],
         [head, ...entryParts(12, true)],
@@ -805,6 +841,7 @@ export const register: Register = on => {
     } else {
       taskText = fit(
         [
+          [head, ...timer, ...routed, { t: ' · ', dim: true }, { t: current }],
           [head, ...timer, { t: ' · ', dim: true }, { t: current }],
           [head, { t: ` ${current}` }],
         ],

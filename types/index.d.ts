@@ -16,6 +16,10 @@ export type Helper = {
   /** Tool calls it has made, for progress when it keeps no to-do list. */
   calls: number
   status: 'running' | 'done' | 'failed'
+  /** The model family it runs on (haiku, sonnet, opus), when known. */
+  model?: string
+  /** True when Kibbles' router chose that model. */
+  routed?: boolean
   /** Its colour slot in the band, kept for the helper's whole life. */
   color?: number
 }
@@ -65,6 +69,10 @@ export type BandData = {
   saverOn?: boolean
   /** This week's usage by day: what was used before the band started counting, then one entry per day so far. */
   days?: WeekDays
+  /** What the model router split off this task: easy parts sent to a cheaper model. */
+  routeNote?: { easy: number; hard: number; model: string }
+  /** The main conversation's model family (haiku, sonnet, opus). */
+  mainModel?: string
   /** What Claude is waiting on you for (a permission, a question); absent when it isn't. */
   waiting?: string
   /** When the current task started and, once it ended, when it ended (epoch ms; 0 when unknown/still running). */

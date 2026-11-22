@@ -122,3 +122,24 @@ test('long text never spills: rows get terser as the band narrows', async ($, on
     }
   }
 })
+
+test('the router shows what it split off, and which model each helper runs on', async ($, on) => {
+  const routed = {
+    ...data,
+    taskTokens: 30_000, mainTokens: 6_000, chatTokens: 250_000, helperSeq: 1, mainModel: 'opus',
+    routeNote: { easy: 2, hard: 1, model: 'haiku' },
+    helpers: [
+      { id: 'agent-a', name: 'Summarise the docs', tokens: 4_000, calls: 3, status: 'running' as const, color: 0, model: 'haiku', routed: true },
+      { id: 'agent-b', name: 'Design the API', tokens: 9_000, calls: 4, status: 'running' as const, color: 1, model: 'opus' },
+    ],
+    taskStart: NOW - 60_000, taskEnd: 0, isRunning: true,
+  }
+  on('state.get', () => ({ value: { value: routed, version: 1 } }))
+  const ui = await $.ui.mount({ plugin: 'kibbles', surface: 'desktop', component: 'AbovePrompt', props: props(260, true) })
+  const task = (await ui.find({ type: 'Text', text: /^ \d+\/\d+/ }))?.text ?? ''
+  expect(task).toContain('⑂ 2 easy → haiku')
+  expect(task).toContain('Summarise the docs · haiku')
+  // Same model as the main conversation: no label.
+  expect(task).not.toContain('Design the API · opus')
+  await ui.unmount()
+})

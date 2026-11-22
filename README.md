@@ -2,12 +2,13 @@
 
 A Claude Code plugin that makes your usage limits last longer and shows you, at a glance, where they're going. Kibbles, the little frog, that saves you tokens and keeps you company while you work.
 
-It does two jobs:
+It does three things, all automatically:
 
 - **A heads-up display:** a tiny live band above the prompt with your weekly and 5-hour limits, task progress and timer, tokens and context, helpers in colour, and a heads-up when Claude is waiting on you.
 - **A token saver:** it cuts what Claude has to read, so your limits last longer. It condenses noisy tool output, skips re-reading files that haven't changed and keeps replies short. A test run that would cost Claude ~15,000 tokens to read costs ~300. The band shows how much it has saved: `saved 38k`.
+- **A model router:** it sends the easy parts of a task to the cheaper Haiku model and keeps the hard parts on Claude's own model. Haiku uses up your limits far more slowly, so the same work goes further. The band shows what it split off: `⑂ 2 easy → haiku`.
 
-Both run on your computer and never call the model.
+There's nothing to set up or switch on. The band and the token saver run on your computer and never call a model. The router only makes a small Haiku call to plan big, multi-part requests.
 
 **The heads-up display**, shown working, waiting for you, and idle:
 
@@ -16,6 +17,10 @@ Both run on your computer and never call the model.
 **The token saver**, on a real 900-test run: Claude reads 98% less, and the failure is kept whole.
 
 ![A 900-test run: what it printed vs what Claude reads after the token saver](docs/saver.png)
+
+**The model router**, on a mixed request: easy parts go to Haiku helpers, the hard part stays with Claude.
+
+![How the model router splits a request](docs/router.png)
 
 ## 1. The heads-up display
 
@@ -46,7 +51,7 @@ When Claude hands parts of a task to helpers, the band shows who's doing what, w
 
 ## 2. The token saver
 
-The more Claude reads, the faster you use up your limits. The token saver works by itself, runs locally and never calls the model. It works in four ways.
+The more Claude reads, the faster you use up your limits. The token saver works by itself, runs locally and never calls a model. It works in four ways.
 
 **1. Noisy output is condensed.** Before Claude sees the output of a shell command or an MCP tool, the saver:
 
@@ -82,11 +87,31 @@ Lines containing **error, fail, warn, traceback, exception, panic, fatal or asse
 
 How much you save depends on how noisy your tools are: test runners, builds, logs, API JSON and re-reads save the most.
 
+## 3. The model router
+
+Not every part of a task needs Claude's biggest model. Searching code, collecting facts, summarising, renaming and formatting are easy work. Design, debugging and tricky changes are hard. The router sends easy parts to **Haiku**, a smaller and much cheaper model, and keeps the hard parts on Claude's own model. On Claude plans, Haiku uses up your 5-hour and weekly limits far more slowly, so the same work stretches further.
+
+It decides everything by itself, per request, in three layers:
+
+| Layer | When | What it does | Cost |
+|---|---|---|---|
+| **1. Standing instruction** | Every chat | Tells Claude: when a request has separate easy and hard parts, hand the easy, self-contained ones to Haiku helpers and do the hard ones yourself. Don't split small tasks or tightly linked parts. If a Haiku helper gets something wrong, redo it. | A few dozen tokens, once per chat, kept in the prompt cache |
+| **2. Safety net** | Whenever Claude starts a helper without choosing a model | If the helper's job reads as easy (search, read, explore, summarise, list, format, docs…), it runs on Haiku. Anything that sounds hard (design, debug, fix, refactor, review, plan…) is left alone. | Free |
+| **3. Pre-read** | Only for **big, multi-part** requests: three or more listed jobs, "these 10 sites", "all the endpoints", or a long message | Before Claude starts, Haiku reads your message and lists its easy and hard parts. Claude gets that list as a suggestion and still decides. Short questions and follow-ups like "yes, go ahead" skip this. | One small Haiku call, usually a few hundred tokens, counted in the band |
+
+**When limits run low**, past 80% of your 5-hour or weekly limit, it leans harder on Haiku. Claude is told once to delegate more readily, the safety net sends any helper that isn't clearly hard to Haiku, and the pre-read also kicks in for medium-sized requests.
+
+**What you see in the band:**
+- **Task row:** `⑂ 2 easy → haiku` when the pre-read split a request.
+- **Helper key:** each helper's model, when it differs from Claude's own: `■ Write the copy · haiku 3/3 · 9k`.
+
+**What it won't do:** it never changes the model of your main conversation. It never touches a helper Claude gave a model to on purpose. It never routes forks or teammates.
+
 ## Meet Kibbles
 
 Kibbles is a little frog who shows what Claude is doing.
 
-**Working:** while Claude is on a task, Kibbles sits behind a big computer, typing away, with its spiral eyes spinning and sweat dripping down.
+**Working:** while Claude is on a task, Kibbles sits behind a big computer, typing away, with its spiral eyes spinning.
 
 ![Kibbles working behind the computer](docs/busy.gif)
 
@@ -94,17 +119,17 @@ Kibbles is a little frog who shows what Claude is doing.
 
 ![Kibbles waving for your attention](docs/wait.gif)
 
-**Napping:** when nothing is running, Kibbles naps, breathing slowly, with its mouth opening into a little "o", a snore bubble and floating z's.
+**Napping:** when nothing is running, Kibbles naps, breathing slowly, its mouth opening into a little "o" and blowing a teardrop-shaped snore bubble, with floating z's.
 
 ![Kibbles asleep](docs/sleep.gif)
 
-Kibbles' mood follows your weekly usage:
+Kibbles' mood follows your weekly usage, and each mood looks clearly different:
 
-| Weekly usage | Working | Napping |
-|---|---|---|
-| Under 50% | 1 sweat drop, relaxed spin | smiling |
-| 50–80% | 2 sweat drops, faster spin | straight face |
-| Over 80% | 3 sweat drops, eyes spinning backwards | worried, with a sweat drop |
+| Weekly usage | Working | Waiting for you | Napping |
+|---|---|---|---|
+| **Under 50%**: happy | A green ♪ floats up; relaxed typing; slow spin; no sweat | Open smile, yellow "!" | Smiling, rosy cheeks, a pink ♥ floats up |
+| **50–80%**: neutral | One sweat drop; normal typing | Little "o" mouth, yellow "!" | Calm, straight mouth |
+| **Over 80%**: worried | Blue worry lines, steam puffing off its head, three sweat drops, frantic typing, nervous jitter, eyes spinning backwards | Worry lines, furrowed brows, red cheeks, wobbly frown, sweat, red "!!" | Worry lines, furrowed brows, red cheeks, sweat, tossing and turning |
 
 ## Install
 
@@ -196,6 +221,20 @@ They go in a `"tokenSaver"` section. Put it in `~/.claude/kibbles.json` for all 
 | `dedupe.maxDiffRatio` | `0.5` | Only when the diff is smaller than this share of the file |
 | `dedupe.minTokens` | `150` | Smaller reads are never skipped |
 
+### Model router settings
+
+There's nothing to set. If you ever want to change it, add a `"router"` section to `~/.claude/kibbles.json`:
+
+```json
+{ "router": { "enabled": true, "cheapModel": "haiku", "maxPreReadsPerChat": 20 } }
+```
+
+| Setting | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | The whole router: instruction, safety net and pre-read |
+| `cheapModel` | `"haiku"` | The model easy work goes to |
+| `maxPreReadsPerChat` | `20` | At most this many pre-reads in one chat |
+
 ## Where the numbers come from
 
 - **Week:** comes straight from your Claude plan's real weekly limit, which Claude subscriptions report. If your plan doesn't report one (for example, API-key billing), Kibbles estimates it from the tokens it has counted and the settings above, and adds **(est.)** to the row.
@@ -206,9 +245,9 @@ They go in a `"tokenSaver"` section. Put it in `~/.claude/kibbles.json` for all 
 
 ## Costs and privacy
 
-- **Free to run:** it never calls the model, so it uses **zero tokens**, and the token saver cuts the tokens Claude reads.
+- **Almost free to run:** the band and the token saver never call a model, so they use **zero tokens**. The token saver cuts the tokens Claude reads. The router's only cost is a small Haiku pre-read on big, multi-part requests. Its tokens are counted in the band like any others.
 - **Updates on events:** it updates when something happens (a message, a tool call, a usage change). It never polls, and redraws at most once a second.
-- **Stays on your computer:** everything runs locally. Nothing is sent anywhere, and the only file it writes is its own settings file.
+- **Stays on your computer:** everything runs locally. Nothing is sent anywhere except the router's pre-read, which goes to Claude like any other request. The only file it writes is its own settings file.
 
 ## Where it works
 
@@ -227,7 +266,7 @@ claude plugin validate .
 claude plugin test .
 ```
 
-The band lives in `hooks/register.tsx` and Kibbles in `hooks/mascot.ts`. The token saver is in `hooks/saver/`: `filters.ts` (output condensing), `dedupe.ts` and `diff.ts` (re-reads), `saver.ts` (its hooks), each with a `*.test.ts` file. Every filter has fixture-based tests, including checks that no error line is ever lost. The frames in `assets/` are the terminal's pictures of Kibbles.
+The band lives in `hooks/register.tsx` and Kibbles in `hooks/mascot.ts`. The token saver is in `hooks/saver/`: `filters.ts` (output condensing), `dedupe.ts` and `diff.ts` (re-reads), `saver.ts` (its hooks), each with a `*.test.ts` file. The model router is in `hooks/router/router.ts`, with tests in `router.test.ts`. Every filter has fixture-based tests, including checks that no error line is ever lost. The frames in `assets/` are the terminal's pictures of Kibbles.
 
 ## License
 
