@@ -1,29 +1,35 @@
 # CuteStatus 🐸
 
-A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your weekly usage is gone, how far along the current task is, and how many tokens that task has used. A little frog keeps you company while you work.
+A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. A little frog keeps you company while you work.
 
-![The CuteStatus band in dark and light themes](docs/band.png)
+![The CuteStatus band: working, waiting for you, and idle](docs/band.png)
 
 ## What it shows
 
-The band is three lines tall, plus a Helpers line (under Task) while helpers are working:
+The band is three lines tall:
 
 | Row | What it means |
 |---|---|
-| **Week** | How much of your weekly usage limit you've used, how much is left, and when it resets, e.g. `54% used · 46% left · resets in 3d 7h 51m`. |
-| **Task** | How far along the current task is, from Claude's to-do list (`3/6 Writing the README`). If there's no to-do list, it counts the steps Claude has taken and names the last one. |
-| **Helpers** | Only shown while Claude has handed parts of the task to helpers (subagents): a close-up of the Task row. Its bar has one lane per worker (see below), and its text is the colour key: `■ you`, then one `■` per helper with its job, its progress and its tokens. A `✓` means that helper has finished, a `✗` that it failed. |
-| **Token** | Tokens used by the current task (including any helpers) and by the whole chat so far: `30k this task · 412k this chat`. The task count starts again from zero each time you send a new message; the chat count keeps going. |
+| **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end is a tiny **day-by-day chart**: one coloured letter pair per day this week (`Mo▃ Tu▇ We▅ Th▂`), with a block as tall as that day's usage compared with your busiest day. Today is in bold. |
+| **Task** | How far along the current task is, from Claude's to-do list, and **how long it has taken**: `3/6 · 4m 12s · Writing the README`. If there's no to-do list, it counts the steps Claude has taken and names the last one. When Claude is **waiting on you**, it says so: `⏸ waiting for you: allow Bash?`. |
+| **Token** | Tokens used by this task (including any helpers), by the whole chat so far, and how full Claude's **context window** is: `12.4k this task · 412k this chat · context 68%`. When the context gets near full, Claude summarises the chat to make room and can lose detail, so a high number is a hint to start a fresh chat for a new topic. |
 
-Each bar turns from **green** to **amber** to **red** as it fills. While helpers are working, the bars switch to **one colour per worker** instead: blue for you (the main conversation) and a different colour for each helper.
+The bars:
 
-- **Task bar:** fills up toward 100% as to-do items get done, by anyone. The filled part is coloured by who finished those items.
-- **Helpers bar:** the same progress in detail. One lane per worker, as wide as its share of the to-do items: solid for what it has finished, a light dotted shade for what it still has to do. A helper at `2/5` shows two-fifths solid, and a finished helper's lane is solid all the way.
-- **Token bar:** the whole bar is this task's tokens, split by who used what share. With no helpers, it instead fills against `taskTokenSoftCap`.
+- **Week:** split into days, each day in its own colour, matching the letters in the day chart. You can see which days used the most. Grey is usage from before CuteStatus started counting this week.
+- **Task and Token:** turn from **green** to **amber** to **red** as they fill. The 5-hour limit and the context window use the same colours in their text.
+
+## Helpers (subagents)
+
+When Claude hands parts of a task to helpers, the band shows who's doing what, with one colour per worker: blue for you (the main conversation) and a different colour for each helper.
 
 ![The band with two helpers at work](docs/helpers.png)
 
-**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task row counts all 10 to-do items together. The Task bar fills up as items get done, coloured by who did them. The Helpers bar shows a lane per worker filling up as each finishes its own items. The Token bar splits the task's tokens by who used them. The Helpers row shows each helper's own progress (`3/5`) and tokens, next to its colour. A helper with no to-do list shows how many steps it has taken instead.
+- **Task bar:** fills up toward 100% as to-do items get done, by anyone. The filled part is coloured by who finished those items.
+- **Task text:** becomes the colour key: `■ you 1/2 · 6k`, then each helper's job, its own progress and its tokens. `✓` means that helper has finished, `✗` that it failed. A helper with no to-do list shows how many steps it has taken instead.
+- **Token bar:** the whole bar is this task's tokens, split by who used what share. With no helpers, it instead fills against `taskTokenSoftCap`.
+
+**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task row counts every to-do item together, so the bar shows the whole job filling up. The key shows each helper's own `2/5` or `✓ 5/5`. The Token bar shows that the coral helper used half of the task's tokens.
 
 ## Meet the frog
 
@@ -32,6 +38,10 @@ The frog shows what Claude is doing.
 **Working:** while Claude is on a task, the frog sits behind a big computer, typing away, with its spiral eyes spinning and sweat dripping down.
 
 ![The frog working behind its computer](docs/busy.gif)
+
+**Waiting for you:** when Claude needs your permission or an answer, the frog stands up and waves at you, with a "!" bubble.
+
+![The frog waving for your attention](docs/wait.gif)
 
 **Napping:** when nothing is running, it sleeps, breathing slowly, with its mouth opening into a little "o", a snore bubble and floating z's.
 
@@ -95,7 +105,9 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 ## Where the numbers come from
 
-- **Week:** comes straight from your Claude plan's real weekly limit, which Claude subscriptions report. If your plan doesn't report one (for example, API-key billing), CuteStatus estimates it from the tokens it has counted and the settings above, and adds **(estimate)** to the row.
+- **Week:** comes straight from your Claude plan's real weekly limit, which Claude subscriptions report. If your plan doesn't report one (for example, API-key billing), CuteStatus estimates it from the tokens it has counted and the settings above, and adds **(est.)** to the row.
+- **5-hour limit and context:** reported by Claude Code itself, so they're real figures. They appear once the first reply of a chat has come back.
+- **Day chart:** CuteStatus notes your weekly percentage as the days go by, so it can only split days it was running for. Usage from before it started counting shows as grey.
 - **Task:** read from Claude's own to-do list as it updates.
 - **Token:** the new input and output tokens of every request in the task, including every helper's. "This chat" counts from when CuteStatus started running in that chat. Tokens served from Claude's prompt cache aren't counted, so this is "new work done", not everything the model read.
 
@@ -107,7 +119,7 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 ## Where it works
 
-The band fits any width. On a narrow window each row switches to shorter wording (`85% used · resets in 2d 5h` becomes `85% · 2d 5h`). Long names are trimmed with `…`; file paths are trimmed in the middle so you still see the file name. If there are more helpers than fit, the last entry reads `+N more`.
+The band fits any width. On a narrow window each row switches to shorter wording (`85% used · resets in 2d 5h 13m` becomes `85% · resets 2d 5h`, then just `85%`). Long names are trimmed with `…`; file paths are trimmed in the middle so you still see the file name. If there are more helpers than fit, the last entry reads `+N more`.
 
 - **Claude Code desktop app and IDE extensions:** the frog is an animated drawing.
 - **Terminal:** the frog is drawn as small pictures where your terminal supports images. Otherwise it's a tiny text face, `(@ω@)` when working or `(-‿-) z` when napping.

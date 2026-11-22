@@ -4,7 +4,7 @@
 // Idle: asleep, eyes closed, breathing slowly, z's floating up.
 
 export type Mood = 'happy' | 'neutral' | 'worried'
-export type Activity = 'busy' | 'sleep'
+export type Activity = 'busy' | 'sleep' | 'wait'
 
 export function moodFor(weekPct: number): Mood {
   return weekPct < 50 ? 'happy' : weekPct <= 80 ? 'neutral' : 'worried'
@@ -275,9 +275,50 @@ function sleep(mood: Mood, animated: boolean, frame: number): string {
  * The mascot as an SVG document. `animated` adds SMIL motion; without it,
  * `frame` (0, 1, 2) picks a still pose for raster frames.
  */
+// Waiting on you (a permission or a question): the frog stands up, looks at
+// you with a little "o" mouth and waves one arm, with a "!" bubble bouncing.
+function wait(mood: Mood, animated: boolean, frame: number): string {
+  const eyes = BUMPS.map(
+    ([x, y, r]) =>
+      `<path d="${spiral(x, y, r * 0.68)}" fill="none" stroke="${RED}" stroke-width="1.5" stroke-linecap="round"/>`,
+  ).join('')
+  const restArm = limb([40, 82], [27, 95], 6, hand(27, 95, 5.5))
+  const waveAngles = [8, -12, -2]
+  const wave = animated
+    ? `<animateTransform attributeName="transform" type="rotate" values="8 62 84;-12 62 84;8 62 84" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1" dur="0.7s" repeatCount="indefinite"/>`
+    : ''
+  const still = animated ? '' : ` transform="rotate(${waveAngles[frame % 3] ?? 0} 62 84)"`
+  const waveArm = `<g${still}>${wave}${limb([62, 84], [94, 76], 6, hand(94, 76, 5.8))}</g>`
+  const mouth = `<path d="${oval(50, 61, 2.6, 3, 0)}" fill="#a8231e" fill-opacity="0.6" stroke="${RED}" stroke-width="1.5"/>`
+  const blush = [33, 67]
+    .map(x => `<ellipse cx="${x}" cy="55" rx="5" ry="2.6" fill="#f4a7b4" fill-opacity="0.45"/>`)
+    .join('')
+  const bounce = animated
+    ? `<animateTransform attributeName="transform" type="translate" values="0 0;0 -3;0 0" dur="0.8s" repeatCount="indefinite"/>`
+    : ''
+  const bubble =
+    `<g${animated ? '' : ` transform="translate(0 ${frame % 2 ? -3 : 0})"`}>${bounce}` +
+    `<circle cx="104" cy="22" r="9" fill="#ffd36b" stroke="#c9921a" stroke-width="1.2"/>` +
+    `<path d="M104 16.5v7" stroke="#5a3d00" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<circle cx="104" cy="27.4" r="1.5" fill="#5a3d00"/></g>`
+  return (
+    legs() +
+    restArm +
+    waveArm +
+    silhouette() +
+    eyes +
+    blush +
+    mouth +
+    belly +
+    (mood === 'worried' ? sweat(animated) : '') +
+    bubble
+  )
+}
+
 export function mascotSvg(mood: Mood, activity: Activity, animated: boolean, frame = 0): string {
   const knit = `<pattern id="k" width="3" height="3" patternUnits="userSpaceOnUse"><path d="M0 1.5h3" stroke="${SHADE}" stroke-width="0.5" stroke-opacity="0.6"/></pattern>`
-  const body = activity === 'busy' ? busy(mood, animated, frame) : sleep(mood, animated, frame)
+  const body =
+    activity === 'busy' ? busy(mood, animated, frame) : activity === 'wait' ? wait(mood, animated, frame) : sleep(mood, animated, frame)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -8 122 128" width="120" height="126">` +
     `<defs>${knit}</defs>${body}</svg>`
@@ -287,5 +328,6 @@ export function mascotSvg(mood: Mood, activity: Activity, animated: boolean, fra
 /** A one-line face for surfaces that can show no picture. */
 export function textFace(mood: Mood, activity: Activity): string {
   if (activity === 'sleep') return '(-‿-) z'
+  if (activity === 'wait') return '(@o@)ノ!'
   return mood === 'happy' ? '(@ω@)' : mood === 'neutral' ? '(@_@)' : '(@~@);'
 }

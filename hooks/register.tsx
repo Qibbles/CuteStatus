@@ -11,6 +11,8 @@ import { type Activity, mascotSvg, moodFor, textFace } from './mascot'
 
 const DATA = { plugin: 'cute-status', key: 'data' } as const
 const STORE_KEY = 'weekly-estimate'
+const DAILY_KEY = 'weekly-by-day'
+const DAY = 24 * 3600_000
 const WEEK = 7 * 24 * 3600_000
 const MASCOT_COLS = 8
 const PNG: Record<string, string> = {}
@@ -71,6 +73,22 @@ function tone(pct: number): 'success' | 'warning' | 'error' {
 
 // Colours that tell the main conversation ("you") and each helper apart in
 // the Task and Token bars; mid-tones that read on light and dark themes.
+// One colour per weekday for the Week bar and its day chart; grey for usage
+// from before the band started counting this week.
+const DAY_COLORS = ['#d4609a', '#4f86c6', '#2fb5a3', '#e0a020', '#e07a5f', '#b07cd8', '#7aa63c']
+const dayColor = (weekday: number) => DAY_COLORS[weekday % 7] ?? '#8a8f98'
+const EARLIER_COLOR = '#8a8f98'
+const DAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+const SPARK = ['▁', '▁', '▂', '▃', '▄', '▅', '▆', '▇']
+
+/** 4m 12s, 1h 3m, 45s. */
+function duration(ms: number): string {
+  const sec = Math.floor(ms / 1000)
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${sec % 60}s` : `${sec}s`
+}
+
 const YOU_COLOR = '#4f86c6'
 const HELPER_COLORS = ['#e07a5f', '#2fb5a3', '#b07cd8', '#e0a020', '#d4609a', '#7aa63c']
 const helperColor = (h: Helper, i: number) => HELPER_COLORS[(h.color ?? i) % HELPER_COLORS.length] ?? YOU_COLOR
@@ -137,26 +155,10 @@ function segments(parts: { weight: number; color: string }[], cells: number): Se
   return parts.map((p, i) => ({ len: lens[i] ?? 0, color: p.color })).filter(x => x.len > 0)
 }
 
-/**
- * One lane per worker across the whole bar, as wide as its share of the to-do
- * items: the finished part solid in its colour, the rest a light shade of it.
- */
-function lanes(parts: { done: number; total: number; color: string }[], cells: number): Seg[] {
-  const live = parts.filter(p => p.total > 0)
-  const widths = allot(live.map(p => p.total), cells)
-  return live.flatMap((p, i) => {
-    const width = widths[i] ?? 0
-    const solid = Math.min(width, Math.round((p.done / p.total) * width))
-    return [
-      { len: solid, color: p.color },
-      { len: width - solid, color: p.color, shade: true },
-    ].filter(x => x.len > 0)
-  })
-}
 
 async function loadPngs($: EngineInterface): Promise<void> {
   for (const mood of ['happy', 'neutral', 'worried']) {
-    for (const f of ['busy-0', 'busy-1', 'busy-2', 'sleep-0', 'sleep-1', 'sleep-2']) {
+    for (const f of ['busy-0', 'busy-1', 'busy-2', 'sleep-0', 'sleep-1', 'sleep-2', 'wait-0', 'wait-1', 'wait-2']) {
       try {
         const r = await $.fs.read(`${$.plugin.root}/assets/${mood}-${f}.png`, { as: 'bytes' })
         PNG[`${mood}-${f}`] = r.base64
@@ -202,6 +204,10 @@ const S = {
   animTimer: null as Timer | null,
   minuteTimer: null as Timer | null,
   storeDirty: false,
+  realFiveHour: null as { pct: number; resetsAt?: number } | null,
+  /** The weekly % last seen in each day of the week, to work out usage per day. */
+  daily: { periodStart: 0, firstSlot: -1, firstPct: 0, marks: [] as (number | null)[] },
+  dailyDirty: false,
 }
 
 async function configPath($: EngineInterface): Promise<string> {
@@ -254,6 +260,34 @@ function recompute(now: number): void {
     S.d.weekPctReal = false
   }
   S.d.now = now
+
+  // Usage per day: remember the weekly % last seen in each day of the week;
+  // a day's usage is how much it rose since the previous day we saw.
+  const slot = Math.max(0, Math.min(6, Math.floor((now - periodStart) / DAY)))
+  const pct = S.d.weekPct
+  if (S.daily.periodStart !== periodStart) {
+    S.daily = { periodStart, firstSlot: slot, firstPct: pct, marks: [null, null, null, null, null, null, null] }
+    S.dailyDirty = true
+  }
+  if ((S.daily.marks[slot] ?? -1) < pct) {
+    S.daily.marks[slot] = pct
+    S.dailyDirty = true
+  }
+  const used: number[] = []
+  const weekday: number[] = []
+  let last = S.daily.firstPct
+  for (let i = 0; i <= slot; i++) {
+    const mark = S.daily.marks[i]
+    const fromHere = i >= S.daily.firstSlot && mark !== null && mark !== undefined
+    used.push(fromHere ? Math.max(0, mark - last) : 0)
+    if (fromHere) last = mark
+    weekday.push(new Date(periodStart + i * DAY + S.cfg.utcOffsetHours * 3600_000).getUTCDay())
+  }
+  S.d.days = { before: S.daily.firstPct, used, weekday }
+  if (S.realFiveHour) {
+    S.d.fiveHourPct = S.realFiveHour.pct
+    S.d.fiveHourResetAt = S.realFiveHour.resetsAt
+  }
 }
 
 // Throttled redraw: at most one state write per second.
@@ -276,16 +310,31 @@ async function flush($: EngineInterface): Promise<void> {
     S.storeDirty = false
     await $.store.set(STORE_KEY, S.estimate)
   }
+  if (S.dailyDirty) {
+    S.dailyDirty = false
+    await $.store.set(DAILY_KEY, S.daily)
+  }
 }
 
 function readRateLimits(list: readonly { kind: string; percentUsed: number; resetsAt?: string }[]): void {
-  const w = list.find(r => r.kind === 'seven_day')
-  if (!w) return
-  const t = w.resetsAt ? Date.parse(w.resetsAt) : NaN
-  S.realWeek = { pct: w.percentUsed, resetsAt: Number.isFinite(t) ? t : undefined }
+  const read = (kind: string) => {
+    const w = list.find(r => r.kind === kind)
+    if (!w) return null
+    const t = w.resetsAt ? Date.parse(w.resetsAt) : NaN
+    return { pct: w.percentUsed, resetsAt: Number.isFinite(t) ? t : undefined }
+  }
+  S.realWeek = read('seven_day') ?? S.realWeek
+  S.realFiveHour = read('five_hour') ?? S.realFiveHour
 }
 
-function startTask(): void {
+function readContext(context: { percent?: number } | undefined): void {
+  if (context?.percent !== undefined) S.d.contextPct = context.percent
+}
+
+function startTask(now: number): void {
+  S.d.taskStart = now
+  S.d.taskEnd = 0
+  S.d.waiting = undefined
   S.d.taskTokens = 0
   S.d.mainTokens = 0
   // Helpers still running carry on into the new task, counted afresh.
@@ -329,12 +378,16 @@ export const register: Register = on => {
     await loadPngs($)
     const saved = (await $.store.get(STORE_KEY)) as typeof S.estimate | undefined
     if (saved && typeof saved.tokens === 'number') S.estimate = { ...saved }
+    const daily = (await $.store.get(DAILY_KEY)) as typeof S.daily | undefined
+    if (daily && Array.isArray(daily.marks)) S.daily = { ...daily, marks: [...daily.marks] }
     const prev = (await $.state.get(DATA)).value
     S.d = prev
       ? { ...freshData(S.cfg), ...prev, steps: [...prev.steps], helpers: [...(prev.helpers ?? [])], isRunning: false, frame: 0 }
       : freshData(S.cfg)
     try {
-      readRateLimits((await $.session.usage()).rateLimits)
+      const usage = await $.session.usage()
+      readRateLimits(usage.rateLimits)
+      readContext(usage.context)
     } catch {
       /* no reading yet */
     }
@@ -348,6 +401,7 @@ export const register: Register = on => {
   // Real weekly usage is pushed here by the engine whenever a window moves.
   on('session.measure', ($, e, next) => {
     readRateLimits(e.rateLimits)
+    readContext(e.context)
     schedule($)
     return next(e)
   })
@@ -355,7 +409,7 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (!e.isMeta) {
       await loadConfig($)
-      startTask()
+      startTask(await $.clock.now())
       schedule($)
     }
     return next(e)
@@ -366,10 +420,30 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('turn.complete', ($, e, next) => {
-    if (e.agentId === undefined) setRunning($, false)
+  on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      S.d.taskEnd = await $.clock.now()
+      S.d.waiting = undefined
+      setRunning($, false)
+    }
     return next(e)
   })
+
+  // --- waiting on you: a permission prompt or a question ---
+
+  on('classic.PermissionRequest', ($, e, next) => {
+    S.d.waiting = `allow ${e.tool_name}?`
+    schedule($)
+    return next(e)
+  })
+
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    if (e.agentId === undefined) {
+      S.d.waiting = 'answer a question'
+      schedule($)
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // Token counts from every model request (main loop and subagents).
   on('turn.step', async function* ($, e, next) {
@@ -472,7 +546,15 @@ export const register: Register = on => {
       S.d.lastTool = hint ? `${e.tool}: ${short.replace(/\s+/g, ' ').slice(0, 60)}` : e.tool
       schedule($)
     }
-    return next(e)
+    // Once a call has been allowed (or answered) and run, Claude is no longer
+    // waiting on you.
+    return next(e).then(r => {
+      if (S.d.waiting !== undefined) {
+        S.d.waiting = undefined
+        schedule($)
+      }
+      return r
+    })
   }).catch(($, e, next) => next(e))
 
   // --- drawing ---
@@ -494,26 +576,70 @@ export const register: Register = on => {
     const room = Math.max(8, Math.floor((avail - W) * (proportional ? 0.88 : 1)) - 1)
     const running = data.isRunning || e.props.isWorking
 
-    // Row 1: weekly
+    const pctText = (n: number) => `${n.toFixed(n > 0 && n < 10 ? 1 : 0)}%`
+    const span = (ms: number) => (ms > 0 ? countdown(ms) : 'now')
+
+    // --- Row 1: Week -----------------------------------------------------
+    // The bar is this week's usage split into days, one colour per weekday;
+    // the text adds the 5-hour limit and a tiny day-by-day chart in the same
+    // colours. "(estimate)" appears only when the plan's real figure is not
+    // available.
     const wPct = data.weekPct
     const left = data.resetAt > 0 ? countdown(data.resetAt - data.now) : '?'
-    // Plain words: how much of the week is used, how much is left, when it resets.
-    // "estimate" appears only when the plan's real figure is not available.
-    const pctText = (n: number) => `${n.toFixed(n > 0 && n < 10 ? 1 : 0)}%`
     const isEstimate = !data.weekPctReal || !data.resetReal
+    const days = data.days
+    const wCells = Math.round((Math.min(100, wPct) / 100) * W)
+    const wSegs: Seg[] =
+      days && days.used.some(u => u > 0)
+        ? segments(
+            [
+              { weight: days.before, color: EARLIER_COLOR },
+              ...days.used.map((u, i) => ({ weight: u, color: dayColor(days.weekday[i] ?? 0) })),
+            ],
+            wCells,
+          )
+        : [{ len: wCells, color: tone(wPct) }]
+    const fivePct = data.fiveHourPct
+    const fiveLeft = data.fiveHourResetAt ? span(data.fiveHourResetAt - data.now) : ''
+    const five = (long: boolean): Part[] =>
+      fivePct === undefined
+        ? []
+        : [
+            { t: ' · 5h ', dim: true },
+            { t: pctText(fivePct), bold: true, color: tone(fivePct) },
+            ...(long && fiveLeft ? [{ t: ` (resets ${shortSpan(fiveLeft)})`, dim: true }] : []),
+          ]
+    // The day chart: a letter pair per day, a block as tall as that day's
+    // share of the busiest day, in the day's colour; today in bold.
+    const peak = Math.max(0, ...(days?.used ?? []))
+    const chart = (withGaps: boolean): Part[] =>
+      !days || peak <= 0
+        ? []
+        : [
+            { t: ' ', dim: true },
+            ...days.used.flatMap((u, i): Part[] => [
+              {
+                t: `${withGaps ? ' ' : ''}${DAY_LETTERS[days.weekday[i] ?? 0]}${SPARK[Math.min(7, Math.round((u / peak) * 7))]}`,
+                color: dayColor(days.weekday[i] ?? 0),
+                bold: i === days.used.length - 1,
+              },
+            ]),
+          ]
     const pctBold: Part = { t: ` ${pctText(wPct)}`, bold: true }
+    const est = isEstimate ? ' (est.)' : ''
     const weekText = fit(
       [
-        [pctBold, { t: ` used · ${pctText(Math.max(0, 100 - wPct))} left · resets in ${left}${isEstimate ? ' (estimate)' : ''}`, dim: true }],
-        [pctBold, { t: ` used · resets in ${left}${isEstimate ? ' (est.)' : ''}`, dim: true }],
-        [pctBold, { t: ` · resets ${shortSpan(left)}${isEstimate ? ' est.' : ''}`, dim: true }],
-        [pctBold, { t: ` · ${shortSpan(left)}`, dim: true }],
+        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(true), ...chart(true)],
+        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(false), ...chart(true)],
+        [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false), ...chart(false)],
+        [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false)],
+        [pctBold, ...five(false)],
         [pctBold],
       ],
       room,
     )
 
-    // Row 2: task progress
+    // --- Row 2: Task -----------------------------------------------------
     const total = data.steps.length
     const done = data.steps.filter(s => s.status === 'completed').length
     const current =
@@ -527,13 +653,12 @@ export const register: Register = on => {
     // Helpers (subagents) on this task, each with its own colour.
     const helpers = data.helpers ?? []
     const hasHelpers = helpers.length > 0
-    const hDone = helpers.filter(h => h.status !== 'running').length
     const mainTokens = data.mainTokens ?? data.taskTokens
     const helperIds = new Set(helpers.map(h => h.id))
     const isMine = (s: Step) => !s.owner || !helperIds.has(s.owner)
 
-    // Each worker's share of the task: you (blue) and each helper. A helper
-    // with no to-do list counts as one item, done when it finishes.
+    // Each worker's share: you (blue) and each helper. A helper with no to-do
+    // list counts as one item, done when it finishes.
     const workers = hasHelpers
       ? [
           {
@@ -552,11 +677,9 @@ export const register: Register = on => {
     const doneAll = workers.reduce((n, w) => n + w.done, 0)
     const totalAll = workers.reduce((n, w) => n + w.total, 0)
     const taskLabel = hasHelpers && totalAll > 0 ? `${doneAll}/${totalAll}` : tLabel
-    // The current step takes whatever room the count leaves, clipped neatly.
-    const taskText = fit([[{ t: ` ${taskLabel}`, bold: true }, { t: ` ${current}` }]], room)
 
-    // Task bar: fills toward 100% as items get done. Alone it goes green to
-    // red; with helpers, the filled part is coloured by who finished what.
+    // The bar fills toward 100% as items get done: alone, green to red; with
+    // helpers, the filled part is coloured by who finished what.
     const tSegs: Seg[] =
       hasHelpers && totalAll > 0
         ? segments(
@@ -565,26 +688,13 @@ export const register: Register = on => {
           )
         : [{ len: Math.round((Math.min(100, tPct) / 100) * W), color: total > 0 ? tone(tPct) : 'suggestion' }]
 
-    // Helpers bar: the Task bar in detail, one lane per worker sized by its
-    // share of the items, solid for done and a light shade for still to do.
-    const hSegs: Seg[] = hasHelpers ? lanes(workers, W) : []
+    // How long the task has taken: live while it runs, final once it ends.
+    const elapsed = data.taskStart ? (data.taskEnd || data.now) - data.taskStart : 0
+    const timer: Part[] = elapsed >= 1000 ? [{ t: ` · ${duration(elapsed)}`, dim: true }] : []
+    const head: Part = { t: ` ${taskLabel}`, bold: true }
 
-    // Token bar: alone, the task's tokens against the soft cap. With helpers
-    // the whole bar is this task's tokens, split by who used what share.
-    const kPct = (data.taskTokens / data.taskCap) * 100
-    const kSegs: Seg[] = hasHelpers
-      ? segments(
-          [
-            { weight: mainTokens, color: YOU_COLOR },
-            ...helpers.map((h, i) => ({ weight: h.tokens, color: helperColor(h, i) })),
-          ],
-          data.taskTokens > 0 ? W : 0,
-        )
-      : [{ len: Math.round((Math.min(100, kPct) / 100) * W), color: tone(kPct) }]
-
-    // The Helpers row doubles as the colour key: ■ you, then each helper.
-    // When it does not fit, it gets terser step by step: shorter names, then
-    // no names, then progress alone, then as many as fit and "+N more".
+    // With helpers, the text is the colour key: ■ you, then each helper with
+    // its progress and tokens. It gets terser step by step when short of room.
     const entries = hasHelpers
       ? [
           {
@@ -602,62 +712,99 @@ export const register: Register = on => {
             const progress = own.length > 0
               ? `${own.filter(s => s.status === 'completed').length}/${own.length}`
               : h.status === 'running' ? `${h.calls} steps` : ''
-            const state = h.status === 'done' ? ' ✓' : h.status === 'failed' ? ' ✗' : ''
-            return { key: h.id, color: helperColor(h, i), name: h.name, mark: state.trim(), progress, tokens: fmt(h.tokens) }
+            const state = h.status === 'done' ? '✓' : h.status === 'failed' ? '✗' : ''
+            return { key: h.id, color: helperColor(h, i), name: h.name, mark: state, progress, tokens: fmt(h.tokens) }
           }),
         ]
       : []
-    const helpersHead: Part = { t: ` ${hDone}/${helpers.length} done`, bold: true }
     const entryParts = (nameMax: number, withTokens: boolean) =>
       entries.flatMap(x => {
         const name = nameMax > 0 ? clip(x.name, Math.max(nameMax, 3)) : ''
-        const head = [name, x.mark, x.progress].filter(Boolean).join(' ')
-        const text = withTokens ? (head ? `${head} · ${x.tokens}` : x.tokens) : head || x.tokens
+        const label = [name, x.mark, x.progress].filter(Boolean).join(' ')
+        const text = withTokens ? (label ? `${label} · ${x.tokens}` : x.tokens) : label || x.tokens
         return [
           { t: '  ■', color: x.color },
           { t: ` ${text}`, dim: true },
         ] as Part[]
       })
-    const helperTiers: Part[][] = hasHelpers
-      ? [
-          [helpersHead, ...entryParts(24, true)],
-          [helpersHead, ...entryParts(12, true)],
-          [helpersHead, ...entryParts(0, true)],
-          [helpersHead, ...entryParts(0, false)],
-        ]
-      : []
-    let helperText: Part[] = helperTiers.find(v => partsLen(v) <= room) ?? []
-    if (hasHelpers && helperText.length === 0) {
-      // Even the tersest is too long: show as many entries as fit, then +N.
-      const terse = entryParts(0, false)
-      helperText = [helpersHead]
-      for (let i = 0; i + 1 < terse.length; i += 2) {
-        const pair = [terse[i], terse[i + 1]].filter((p): p is Part => p !== undefined)
-        const more = ` +${(terse.length - i) / 2} more`
-        if (partsLen(helperText) + partsLen(pair) + 8 > room) {
-          helperText.push({ t: more, dim: true })
-          break
+
+    let taskText: Part[]
+    if (data.waiting) {
+      // Claude is waiting on you: say so plainly, in the warning colour.
+      taskText = fit(
+        [
+          [head, ...timer, { t: ' · ', dim: true }, { t: `⏸ waiting for you: ${data.waiting}`, color: 'warning', bold: true }],
+          [head, { t: ' ', dim: true }, { t: `⏸ waiting: ${data.waiting}`, color: 'warning', bold: true }],
+          [head, { t: ' ⏸ waiting for you', color: 'warning', bold: true }],
+        ],
+        room,
+      )
+    } else if (hasHelpers) {
+      const tiers: Part[][] = [
+        [head, ...timer, ...entryParts(24, true)],
+        [head, ...timer, ...entryParts(12, true)],
+        [head, ...entryParts(12, true)],
+        [head, ...entryParts(0, true)],
+        [head, ...entryParts(0, false)],
+      ]
+      taskText = tiers.find(v => partsLen(v) <= room) ?? []
+      if (taskText.length === 0) {
+        // Even the tersest is too long: as many entries as fit, then +N more.
+        const terse = entryParts(0, false)
+        taskText = [head]
+        for (let i = 0; i + 1 < terse.length; i += 2) {
+          const pair = [terse[i], terse[i + 1]].filter((p): p is Part => p !== undefined)
+          if (partsLen(taskText) + partsLen(pair) + 8 > room) {
+            taskText.push({ t: ` +${(terse.length - i) / 2} more`, dim: true })
+            break
+          }
+          taskText.push(...pair)
         }
-        helperText.push(...pair)
+        taskText = fit([taskText], room)
       }
-      helperText = fit([helperText], room)
+    } else {
+      taskText = fit(
+        [
+          [head, ...timer, { t: ' · ', dim: true }, { t: current }],
+          [head, { t: ` ${current}` }],
+        ],
+        room,
+      )
     }
 
-    // Token row: this task and the whole chat, terser when short of room.
-    const taskTok = fmt(data.taskTokens)
-    const chatTok = fmt(data.chatTokens ?? data.taskTokens)
+    // --- Row 3: Token ----------------------------------------------------
+    // Alone: this task's tokens against the soft cap. With helpers: the whole
+    // bar is this task's tokens, split by who used what share. The text adds
+    // the whole chat's tokens and how full the context window is.
+    const kPct = (data.taskTokens / data.taskCap) * 100
+    const kSegs: Seg[] = hasHelpers
+      ? segments(
+          [
+            { weight: mainTokens, color: YOU_COLOR },
+            ...helpers.map((h, i) => ({ weight: h.tokens, color: helperColor(h, i) })),
+          ],
+          data.taskTokens > 0 ? W : 0,
+        )
+      : [{ len: Math.round((Math.min(100, kPct) / 100) * W), color: tone(kPct) }]
+    const taskTok: Part = { t: ` ${fmt(data.taskTokens)}`, bold: true }
+    const chatTok: Part = { t: fmt(data.chatTokens ?? data.taskTokens), bold: true }
+    const ctx = data.contextPct
+    const ctxParts = (word: string): Part[] =>
+      ctx === undefined ? [] : [{ t: ` · ${word} `, dim: true }, { t: `${ctx}%`, bold: true, color: tone(ctx) }]
     const tokenText = fit(
       [
-        [{ t: ` ${taskTok}`, bold: true }, { t: ' this task · ', dim: true }, { t: chatTok, bold: true }, { t: ' this chat', dim: true }],
-        [{ t: ` ${taskTok}`, bold: true }, { t: ' task · ', dim: true }, { t: chatTok, bold: true }, { t: ' chat', dim: true }],
-        [{ t: ` ${taskTok}`, bold: true }, { t: ' task', dim: true }],
-        [{ t: ` ${taskTok}`, bold: true }],
+        [taskTok, { t: ' this task · ', dim: true }, chatTok, { t: ' this chat', dim: true }, ...ctxParts('context')],
+        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...ctxParts('context')],
+        [taskTok, { t: ' task · ', dim: true }, chatTok, { t: ' chat', dim: true }, ...ctxParts('ctx')],
+        [taskTok, { t: ' task', dim: true }, ...ctxParts('ctx')],
+        [taskTok, ...ctxParts('ctx')],
+        [taskTok],
       ],
       room,
     )
 
     const mood = moodFor(wPct)
-    const activity: Activity = running ? 'busy' : 'sleep'
+    const activity: Activity = data.waiting ? 'wait' : running ? 'busy' : 'sleep'
     const frame = running ? data.frame % 3 : 0
 
     const el = $.ui.resolve(e)
@@ -669,7 +816,13 @@ export const register: Register = on => {
       'Svg' in el ? (
         <el.Svg
           source={mascotSvg(mood, activity, true)}
-          alt={running ? `The frog is hard at work behind a computer, looking ${mood}` : `The frog is asleep, looking ${mood}`}
+          alt={
+            activity === 'wait'
+              ? 'The frog is waving: Claude is waiting for you'
+              : activity === 'busy'
+                ? `The frog is hard at work behind a computer, looking ${mood}`
+                : `The frog is asleep, looking ${mood}`
+          }
           width={58}
           height={58}
           isInteractive
@@ -713,9 +866,8 @@ export const register: Register = on => {
           {mascot}
         </Box>
         <Box flexDirection="column" flexGrow={1}>
-          {row('Week', [{ len: Math.round((Math.min(100, wPct) / 100) * W), color: tone(wPct) }], weekText)}
+          {row('Week', wSegs, weekText)}
           {row('Task', tSegs, taskText)}
-          {hasHelpers ? row('Helpers', hSegs, helperText) : null}
           {row('Token', kSegs, tokenText)}
         </Box>
       </Box>

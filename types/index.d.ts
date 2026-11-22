@@ -20,6 +20,16 @@ export type Helper = {
   color?: number
 }
 
+/** This week's usage, split by day. */
+export type WeekDays = {
+  /** Percent used before the band first saw this week. */
+  before: number
+  /** Percent used each day, from the week's first day to today. */
+  used: number[]
+  /** The weekday of each entry, 0 = Sunday. */
+  weekday: number[]
+}
+
 export type BandData = {
   /** Weekly percent used, 0-100. */
   weekPct: number
@@ -44,6 +54,18 @@ export type BandData = {
   /** How many helpers have been given a colour so far. */
   helperSeq: number
   taskCap: number
+  /** The 5-hour limit: percent used and when it resets (epoch ms), when the plan reports it. */
+  fiveHourPct?: number
+  fiveHourResetAt?: number
+  /** How full the context window is, 0-100, when known. */
+  contextPct?: number
+  /** This week's usage by day: what was used before the band started counting, then one entry per day so far. */
+  days?: WeekDays
+  /** What Claude is waiting on you for (a permission, a question); absent when it isn't. */
+  waiting?: string
+  /** When the current task started and, once it ended, when it ended (epoch ms; 0 when unknown/still running). */
+  taskStart?: number
+  taskEnd?: number
   isRunning: boolean
   frame: number
   now: number

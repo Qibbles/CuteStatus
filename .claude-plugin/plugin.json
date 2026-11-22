@@ -1,11 +1,21 @@
 {
   "name": "cute-status",
-  "version": "1.5.0",
-  "description": "A tiny live band above the Claude Code prompt: weekly usage, task progress and task tokens, with an animated frog that works while Claude works and naps when it's idle.",
-  "author": { "name": "Qibbles", "url": "https://github.com/Qibbles" },
+  "version": "2.0.0",
+  "description": "A tiny live band above the Claude Code prompt: weekly and 5-hour limits with a day-by-day chart, task progress and timer, tokens and context, helpers in colour, and an animated frog that works, waves when Claude needs you, and naps when idle.",
+  "author": {
+    "name": "Qibbles",
+    "url": "https://github.com/Qibbles"
+  },
   "homepage": "https://github.com/Qibbles/CuteStatus",
   "repository": "https://github.com/Qibbles/CuteStatus",
   "license": "MIT",
-  "keywords": ["usage", "status", "rate-limit", "mascot", "progress", "tokens"],
+  "keywords": [
+    "usage",
+    "status",
+    "rate-limit",
+    "mascot",
+    "progress",
+    "tokens"
+  ],
   "types": "./types/index.d.ts"
 }
