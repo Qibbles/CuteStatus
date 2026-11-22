@@ -25,11 +25,11 @@ When Claude hands parts of a task to helpers, the band shows who's doing what, w
 
 ![The band with two helpers at work](docs/helpers.png)
 
-- **Task bar:** fills up toward 100% as to-do items get done, by anyone. The filled part is coloured by who finished those items.
+- **Task bar:** one lane per worker, as wide as its share of the to-do items. The solid part of a lane is what that worker has finished; the light, dotted part in the same colour is what it still has to do. A helper at `2/5` is two-fifths solid, and a finished helper's lane is solid all the way.
 - **Task text:** becomes the colour key: `■ you 1/2 · 6k`, then each helper's job, its own progress and its tokens. `✓` means that helper has finished, `✗` that it failed. A helper with no to-do list shows how many steps it has taken instead.
 - **Token bar:** the whole bar is this task's tokens, split by who used what share. With no helpers, it instead fills against `taskTokenSoftCap`.
 
-**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task row counts every to-do item together, so the bar shows the whole job filling up. The key shows each helper's own `2/5` or `✓ 5/5`. The Token bar shows that the coral helper used half of the task's tokens.
+**An example:** you ask Claude to build 10 sites, and it hands sites 1–5 to one helper and 6–10 to another. The Task bar shows each helper's lane filling up, so you can see at a glance who's done and who still has work left. The key shows each helper's own `2/5` or `✓ 5/5`. The Token bar shows that the coral helper used half of the task's tokens.
 
 ## Meet the frog
 

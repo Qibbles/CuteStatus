@@ -154,6 +154,23 @@ function segments(parts: { weight: number; color: string }[], cells: number): Se
   return parts.map((p, i) => ({ len: lens[i] ?? 0, color: p.color })).filter(x => x.len > 0)
 }
 
+/**
+ * One lane per worker across the whole bar, as wide as its share of the to-do
+ * items: the finished part solid in its colour, the rest a light shade of it.
+ */
+function lanes(parts: { done: number; total: number; color: string }[], cells: number): Seg[] {
+  const live = parts.filter(p => p.total > 0)
+  const widths = allot(live.map(p => p.total), cells)
+  return live.flatMap((p, i) => {
+    const width = widths[i] ?? 0
+    const solid = Math.min(width, Math.round((p.done / p.total) * width))
+    return [
+      { len: solid, color: p.color },
+      { len: width - solid, color: p.color, shade: true },
+    ].filter(x => x.len > 0)
+  })
+}
+
 
 async function loadPngs($: EngineInterface): Promise<void> {
   for (const mood of ['happy', 'neutral', 'worried']) {
@@ -673,14 +690,12 @@ export const register: Register = on => {
     const totalAll = workers.reduce((n, w) => n + w.total, 0)
     const taskLabel = hasHelpers && totalAll > 0 ? `${doneAll}/${totalAll}` : tLabel
 
-    // The bar fills toward 100% as items get done: alone, green to red; with
-    // helpers, the filled part is coloured by who finished what.
+    // Alone, the bar fills green to red. With helpers it has one lane per
+    // worker, as wide as its share of the to-do items: solid for what it has
+    // finished, a light shade of its colour for what it still has to do.
     const tSegs: Seg[] =
       hasHelpers && totalAll > 0
-        ? segments(
-            workers.map(w => ({ weight: w.done, color: w.color })),
-            Math.round((doneAll / totalAll) * W),
-          )
+        ? lanes(workers, W)
         : [{ len: Math.round((Math.min(100, tPct) / 100) * W), color: total > 0 ? tone(tPct) : 'suggestion' }]
 
     // How long the task has taken: live while it runs, final once it ends.
