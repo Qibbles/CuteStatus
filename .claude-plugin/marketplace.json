@@ -1,0 +1,15 @@
+{
+  "name": "cutestatus",
+  "description": "CuteStatus: a cute live usage band for Claude Code.",
+  "owner": {
+    "name": "Qibbles",
+    "url": "https://github.com/Qibbles"
+  },
+  "plugins": [
+    {
+      "name": "cute-status",
+      "source": "./",
+      "description": "Weekly usage, task progress and task tokens in a tiny band above the prompt, with an animated frog mascot."
+    }
+  ]
+}
