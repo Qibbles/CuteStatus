@@ -60,15 +60,6 @@ test('a repeat Read of an unchanged file is denied; a changed one comes back as 
   expect(content).toContain('+    return 999')
 })
 
-test('/savings answers without a model turn', async ($, on) => {
-  on('tool.call', () => bash(longPytest()))
-  await $.tool.call({ tool: 'Bash', command: 'pytest -q' })
-  const r = await $.command.run({ command: 'savings', args: '' } as never)
-  expect(r.text ?? '').toContain('Token saver (on')
-  expect(r.text ?? '').toMatch(/This chat:\s+15\.1k/)
-  expect(r.isTextDisplayOnly).toBe(true)
-})
-
 const NOW = 1_000_000_000
 const band = {
   weekPct: 10, weekPctReal: true, resetAt: NOW + 86400_000, resetReal: true, weekTokens: 0, weekLimit: 5_000_000,

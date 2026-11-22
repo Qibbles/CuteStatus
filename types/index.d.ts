@@ -59,8 +59,6 @@ export type BandData = {
   fiveHourResetAt?: number
   /** How full the context window is, 0-100, when known. */
   contextPct?: number
-  /** Tokens the token saver kept out of the context this task (estimate). */
-  savedTask?: number
   /** Tokens the token saver kept out of the context this chat (estimate). */
   savedChat?: number
   /** False when the token saver is turned off. */

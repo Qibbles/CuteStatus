@@ -24,12 +24,12 @@ type Entry = {
   denied: Set<string>
 }
 
-export const diffHeader = (path: string) =>
+const diffHeader = (path: string) =>
   `[cute-status token saver] ${path} changed since your last read. Unified diff against the version you ` +
   'already have (the line numbers at the start of each line in this result belong to the note, not the ' +
   'file; the @@ headers give real file lines):'
 
-export const unchangedNote = (path: string, range: string) =>
+const unchangedNote = (path: string, range: string) =>
   `[cute-status token saver] ${path} (${range}) is unchanged since you last read it in this conversation; ` +
   'use the content you already have. If you truly need it again, repeat the same Read and it will be allowed.'
 

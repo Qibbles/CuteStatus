@@ -34,17 +34,6 @@ function spiral(cx: number, cy: number, r: number, turns = 2.6): string {
   return d
 }
 
-function zigzag(x0: number, x1: number, y: number, bow: number, teeth: number, amp: number): string {
-  let d = ''
-  const n = teeth * 2
-  for (let i = 0; i <= n; i++) {
-    const t = i / n
-    const yy = y + bow * 4 * t * (1 - t) + (i % 2 === 0 ? -amp : amp)
-    d += `${i === 0 ? 'M' : 'L'}${(x0 + (x1 - x0) * t).toFixed(2)} ${yy.toFixed(2)}`
-  }
-  return d
-}
-
 function silhouette(): string {
   const parts = (stroke: boolean) => {
     const s = stroke ? ` stroke="${EDGE}" stroke-width="${W}"` : ''

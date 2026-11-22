@@ -23,7 +23,7 @@ const SPINNER_RE = /^\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s/
 const NEVER = /(?!x)x/
 
 const protectCache = new Map<string, RegExp>()
-export function protectRe(cfg: Pick<FilterConfig, 'protectPattern'>): RegExp {
+function protectRe(cfg: Pick<FilterConfig, 'protectPattern'>): RegExp {
   const pat = cfg.protectPattern || NEVER.source
   let re = protectCache.get(pat)
   if (!re) {

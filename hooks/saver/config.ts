@@ -83,26 +83,3 @@ function mergeKnown<T>(base: T, over: unknown): T {
 export function resolveConfig(user: unknown, project: unknown): SaverConfig {
   return mergeKnown(mergeKnown(SAVER_DEFAULTS, user), project)
 }
-
-/** True when `key` (dotted, e.g. `filter.maxLines`) names a setting. */
-export function isKnownKey(key: string): boolean {
-  let node: unknown = SAVER_DEFAULTS
-  for (const part of key.split('.')) {
-    if (!isObj(node) || !(part in node)) return false
-    node = node[part]
-  }
-  return !isObj(node)
-}
-
-/** A copy of `obj` with the dotted `key` set to `value`. */
-export function setDotted(obj: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
-  const parts = key.split('.')
-  const out = { ...obj }
-  let node: Record<string, unknown> = out
-  for (const p of parts.slice(0, -1)) {
-    node[p] = isObj(node[p]) ? { ...(node[p] as Record<string, unknown>) } : {}
-    node = node[p] as Record<string, unknown>
-  }
-  node[parts[parts.length - 1] as string] = value
-  return out
-}

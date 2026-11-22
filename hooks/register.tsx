@@ -2,7 +2,15 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { BandData, Helper, Step } from '../types'
 import { type Activity, mascotSvg, moodFor, textFace } from './mascot'
-import { registerSaver, saverAfterToolCall, saverSavings, saverAgentReport, saverPromptSubmit, saverSessionStart } from './saver/saver'
+import {
+  registerSaver,
+  saverAfterToolCall,
+  saverAgentReport,
+  saverLoadConfig,
+  saverPromptNote,
+  saverSavings,
+  saverSessionStart,
+} from './saver/saver'
 
 // ---------------------------------------------------------------------------
 // cute-status: a 3-line band above the prompt. Everything is local: it reads
@@ -40,7 +48,7 @@ const DEFAULT_CONFIG: Config = {
 const CONFIG_NOTE =
   'cute-status config. weeklyTokenLimit, resetDay, resetTime and utcOffsetHours are used only when your plan does ' +
   'not report its real weekly limit (Claude subscriptions do). taskTokenSoftCap sets how full the Token bar looks. ' +
-  'tokenSaver holds the token saver settings (see the README); /tokensaver status shows them all.'
+  'tokenSaver holds the token saver settings (see the README).'
 
 // --- helpers ---------------------------------------------------------------
 
@@ -235,8 +243,10 @@ async function configPath($: EngineInterface): Promise<string> {
 
 async function loadConfig($: EngineInterface): Promise<void> {
   const path = await configPath($)
+  let saverSection: unknown
   try {
-    const raw = JSON.parse(String(await $.fs.read(path))) as Partial<Config>
+    const raw = JSON.parse(String(await $.fs.read(path))) as Partial<Config> & { tokenSaver?: unknown }
+    saverSection = raw.tokenSaver
     S.cfg = {
       weeklyTokenLimit: Number(raw.weeklyTokenLimit) > 0 ? Number(raw.weeklyTokenLimit) : DEFAULT_CONFIG.weeklyTokenLimit,
       resetDay: typeof raw.resetDay === 'string' ? raw.resetDay : DEFAULT_CONFIG.resetDay,
@@ -255,6 +265,8 @@ async function loadConfig($: EngineInterface): Promise<void> {
       )
     }
   }
+  // The token saver's settings are the tokenSaver section of the same file.
+  await saverLoadConfig($, saverSection)
 }
 
 // Recompute the weekly figures from what is known: real window first.
@@ -282,7 +294,6 @@ function recompute(now: number): void {
   }
   S.d.now = now
   const saved = saverSavings()
-  S.d.savedTask = saved.task
   S.d.savedChat = saved.chat
   S.d.saverOn = saved.on
 
@@ -396,12 +407,13 @@ function setRunning($: EngineInterface, running: boolean): void {
 
 
 export const register: Register = on => {
-  // --- token saver: condenses tool output and re-reads; reports savings here ---
+  // --- token saver: works under the hood; the Token row shows what it saved ---
   registerSaver(on)
 
   // --- lifecycle ---
 
   on('session.start', async ($, e, next) => {
+    saverSessionStart(e.cwd)
     await loadConfig($)
     await loadPngs($)
     const saved = (await $.store.get(STORE_KEY)) as typeof S.estimate | undefined
@@ -422,11 +434,6 @@ export const register: Register = on => {
     // The countdown is minute-grained; a local tick redraws it. No data is polled.
     S.minuteTimer?.cancel()
     S.minuteTimer = $.clock.every(60_000, () => schedule($))
-    try {
-      await saverSessionStart($, e.cwd)
-    } catch {
-      /* the band works without the saver */
-    }
     schedule($)
     return next(e)
   })
@@ -445,10 +452,9 @@ export const register: Register = on => {
       startTask(await $.clock.now())
       schedule($)
     }
-    if (!e.isMeta && !e.command) {
-      const note = await saverPromptSubmit($)
-      if (note) return next({ ...e, context: [...(e.context ?? []), note] })
-    }
+    // Terse mode switched in the settings file mid-chat: tell Claude once.
+    const note = !e.isMeta && !e.command ? saverPromptNote() : null
+    if (note) return next({ ...e, context: [...(e.context ?? []), note] })
     return next(e)
   }).catch(($, e, next) => next(e))
 

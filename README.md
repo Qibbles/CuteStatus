@@ -59,7 +59,7 @@ Kibbles' mood follows your weekly usage:
 
 ## Token saver
 
-Everything runs locally and never calls the model. It works in four ways.
+It works by itself, runs locally and never calls the model. It works in four ways.
 
 **1. Noisy output is condensed.** Before Claude sees the output of a shell command or an MCP tool, the saver:
 
@@ -77,18 +77,9 @@ Lines containing **error, fail, warn, traceback, exception, panic, fatal or asse
 - The main chat and each helper are tracked separately.
 - After an edit or a compaction, the next read is a full one.
 
-**3. Terse replies.** A short style instruction asks for no preamble, no restating the question, no closing recap, and code changes shown as diffs. It never shortens code, commands or error messages. It's set once at the start of a chat, in the system prompt, so it doesn't break Claude's prompt cache. Switching it mid-chat sends a single note instead.
+**3. Terse replies.** A short style instruction asks for no preamble, no restating the question, no closing recap, and code changes shown as diffs. It never shortens code, commands or error messages. It's set once at the start of a chat, in the system prompt, so it doesn't break Claude's prompt cache. If you switch it in the settings mid-chat, Claude gets one note instead.
 
-**4. Savings shown in the band and on request.**
-
-| Command | What it does |
-|---|---|
-| `/savings` | Tokens saved this task, this chat and all time, split into condensed output and skipped reads |
-| `/terse [on\|off\|status] [--project]` | Terse replies on or off, for you or for this project only |
-| `/tokensaver [on\|off\|status] [--global]` | The whole token saver on or off for this project (or `--global` for all projects); `status` shows every setting |
-| `/tokensaver set <key> <value> [--global]` | Change one setting, e.g. `/tokensaver set filter.maxLines 400` |
-
-The commands answer instantly and don't use a model turn.
+**4. Savings in the band.** The Token row shows how many tokens the saver kept out of the chat: `· saved 38k`. There's nothing to run: it works by itself, and you can tune or turn it off in the settings below.
 
 **Measured savings** (estimated at ~4 characters a token; no error lines lost in any case):
 
@@ -155,7 +146,7 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 ### Token saver settings
 
-They go in a `"tokenSaver"` section. Put it in `~/.claude/cute-status.json` for all projects, or in `.claude/cute-status.json` inside a project for that project only; the project's file wins. `/tokensaver status` shows the settings in effect.
+They go in a `"tokenSaver"` section. Put it in `~/.claude/cute-status.json` for all projects, or in `.claude/cute-status.json` inside a project for that project only; the project's file wins. Changes apply on your next message. To turn the token saver off, set `"enabled": false`.
 
 ```json
 { "tokenSaver": { "enabled": true, "terse": true, "filter": { "maxLines": 400 } } }
@@ -192,7 +183,7 @@ They go in a `"tokenSaver"` section. Put it in `~/.claude/cute-status.json` for 
 
 - **Free to run:** it never calls the model, so it uses **zero tokens**, and the token saver cuts the tokens Claude reads.
 - **Updates on events:** it updates when something happens (a message, a tool call, a usage change). It never polls, and redraws at most once a second.
-- **Stays on your computer:** everything runs locally. Nothing is sent anywhere. The only files it writes are its own settings files: `~/.claude/cute-status.json`, and a project's `.claude/cute-status.json` when you change a setting for that project.
+- **Stays on your computer:** everything runs locally. Nothing is sent anywhere, and the only file it writes is its own settings file.
 
 ## Where it works
 
@@ -211,7 +202,7 @@ claude plugin validate .
 claude plugin test .
 ```
 
-The band lives in `hooks/register.tsx` and Kibbles in `hooks/mascot.ts`. The token saver is in `hooks/saver/`: `filters.ts` (output condensing), `dedupe.ts` and `diff.ts` (re-reads), `saver.ts` (its hooks and commands), each with a `*.test.ts` file. Every filter has fixture-based tests, including checks that no error line is ever lost. The frames in `assets/` are the terminal's pictures of Kibbles.
+The band lives in `hooks/register.tsx` and Kibbles in `hooks/mascot.ts`. The token saver is in `hooks/saver/`: `filters.ts` (output condensing), `dedupe.ts` and `diff.ts` (re-reads), `saver.ts` (its hooks), each with a `*.test.ts` file. Every filter has fixture-based tests, including checks that no error line is ever lost. The frames in `assets/` are the terminal's pictures of Kibbles.
 
 ## License
 
