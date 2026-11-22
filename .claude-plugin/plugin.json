@@ -1,14 +1,14 @@
 {
   "name": "kibbles",
   "displayName": "Kibbles - Usage HUD & Token Saver",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Kibbles the frog's heads-up display above the Claude Code prompt: weekly and 5-hour limits by day, task progress and timer, tokens and context, helpers in colour, and a built-in token saver that condenses noisy tool output, skips unchanged re-reads, keeps replies terse and shows what it saved.",
   "author": {
     "name": "Qibbles",
     "url": "https://github.com/Qibbles"
   },
-  "homepage": "https://github.com/Qibbles/CuteStatus",
-  "repository": "https://github.com/Qibbles/CuteStatus",
+  "homepage": "https://github.com/Qibbles/Kibbles",
+  "repository": "https://github.com/Qibbles/Kibbles",
   "license": "MIT",
   "keywords": [
     "context",

@@ -241,25 +241,8 @@ async function configPath($: EngineInterface): Promise<string> {
   return `${home}/.claude/kibbles.json`
 }
 
-/** The plugin was called cute-status before: carry its settings file over once. */
-async function migrateConfig($: EngineInterface, path: string): Promise<void> {
-  try {
-    await $.fs.stat(path)
-    return
-  } catch {
-    /* no kibbles.json yet */
-  }
-  try {
-    const old = String(await $.fs.read(path.replace(/kibbles\.json$/, 'cute-status.json')))
-    await $.fs.write(path, old.replace(/cute-status config\./, 'Kibbles config.'))
-  } catch {
-    /* nothing to carry over */
-  }
-}
-
 async function loadConfig($: EngineInterface): Promise<void> {
   const path = await configPath($)
-  await migrateConfig($, path)
   let saverSection: unknown
   try {
     const raw = JSON.parse(String(await $.fs.read(path))) as Partial<Config> & { tokenSaver?: unknown }

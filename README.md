@@ -1,6 +1,6 @@
 # Kibbles - Usage HUD & Token Saver 🐸
 
-A Claude Code plugin (formerly CuteStatus) that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
+A Claude Code plugin that displays a tiny, live status band that sits just above the prompt bar. At a glance it shows how much of your usage limits are gone, how far along the current task is, and how many tokens it has used. It also tells you when Claude is waiting on you. Kibbles, a little frog, keeps you company while you work.
 
 Under the hood, its **token saver** cuts what Claude has to read: it condenses noisy tool output, skips re-reading files that haven't changed, and keeps replies short. The band shows how much it saved.
 
@@ -100,7 +100,7 @@ How much you save depends on how noisy your tools are: test runners, builds, log
 You need [Claude Code](https://claude.com/claude-code). In a Claude Code session, type:
 
 ```
-/plugin install kibbles --marketplace Qibbles/CuteStatus
+/plugin install kibbles --marketplace Qibbles/Kibbles
 ```
 
 Answer `y` to add the marketplace, then press Enter to install it for your user. The band appears right away.
@@ -108,10 +108,10 @@ Answer `y` to add the marketplace, then press Enter to install it for your user.
 Or from a shell:
 
 ```bash
-claude plugin install kibbles --marketplace Qibbles/CuteStatus
+claude plugin install kibbles --marketplace Qibbles/Kibbles
 ```
 
-In the Claude desktop app, where `/plugin` doesn't run: click **+** next to the prompt box, then **Plugins**, **Add marketplace**, enter `Qibbles/CuteStatus`, then **Add plugin**.
+In the Claude desktop app, where `/plugin` doesn't run: click **+** next to the prompt box, then **Plugins**, **Add marketplace**, enter `Qibbles/Kibbles`, then **Add plugin**.
 
 ## Turn it off or remove it
 
@@ -121,20 +121,6 @@ In the Claude desktop app, where `/plugin` doesn't run: click **+** next to the 
 ```bash
 claude plugin uninstall kibbles
 ```
-
-## Upgrading from CuteStatus
-
-This plugin used to be called **cute-status**. If you installed it under that name, remove the old one and install the new one:
-
-```bash
-claude plugin uninstall cute-status
-```
-
-```bash
-claude plugin install kibbles --marketplace Qibbles/CuteStatus
-```
-
-Your settings carry over: on first run, Kibbles copies `~/.claude/cute-status.json` to `~/.claude/kibbles.json`. A project's `.claude/cute-status.json` keeps working too.
 
 ## Settings
 

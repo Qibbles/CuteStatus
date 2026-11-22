@@ -55,20 +55,16 @@ export function saverSessionStart(cwd: string): void {
 
 /**
  * From the band's settings load: `section` is the `tokenSaver` part of
- * ~/.claude/kibbles.json; a project's .claude/kibbles.json (or, from before the
- * rename, .claude/cute-status.json) overrides it.
+ * ~/.claude/kibbles.json; a project's .claude/kibbles.json overrides it.
  */
 export async function saverLoadConfig($: EngineInterface, section: unknown): Promise<void> {
   let project: unknown
   if (T.cwd) {
-    for (const name of ['kibbles.json', 'cute-status.json']) {
-      try {
-        project = (JSON.parse(String(await $.fs.read(`${T.cwd}/.claude/${name}`))) as { tokenSaver?: unknown })
-          ?.tokenSaver
-        break
-      } catch {
-        /* no project settings under this name */
-      }
+    try {
+      project = (JSON.parse(String(await $.fs.read(`${T.cwd}/.claude/kibbles.json`))) as { tokenSaver?: unknown })
+        ?.tokenSaver
+    } catch {
+      /* no project settings */
     }
   }
   T.cfg = resolveConfig(section, project)
