@@ -1,6 +1,6 @@
 {
   "name": "cute-status",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A tiny live band above the Claude Code prompt: weekly and 5-hour limits with a day-by-day chart, task progress and timer, tokens and context, helpers in colour, and an animated frog that works, waves when Claude needs you, and naps when idle.",
   "author": {
     "name": "Qibbles",

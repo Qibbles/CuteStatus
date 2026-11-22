@@ -46,9 +46,7 @@ test('5-hour limit, day chart, task timer and context', async ($, on) => {
   const ui = await $.ui.mount({ plugin: 'cute-status', surface: 'desktop', component: 'AbovePrompt', props: props(200, true) })
   const week = (await ui.find({ type: 'Text', text: /85%/ }))?.text ?? ''
   expect(week).toContain('· 5h 23% (resets 1h 40m)')
-  expect(week).toContain('Mo▄')
-  expect(week).toContain('Tu▇')
-  expect(week).toContain('We▅')
+  expect(week).toContain('  Mo Tu We')
   expect((await ui.find({ type: 'Text', text: /1\/3/ }))?.text).toContain('1/3 · 4m 12s · Writing config')
   expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text).toContain('· context 68%')
   await ui.unmount()

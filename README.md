@@ -10,13 +10,13 @@ The band is three lines tall:
 
 | Row | What it means |
 |---|---|
-| **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end is a tiny **day-by-day chart**: one coloured letter pair per day this week (`Mo▃ Tu▇ We▅ Th▂`), with a block as tall as that day's usage compared with your busiest day. Today is in bold. |
+| **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end are the **days of the week so far**, each name in the colour of its part of the bar (`Mo Tu We Th`). Today is in bold. |
 | **Task** | How far along the current task is, from Claude's to-do list, and **how long it has taken**: `3/6 · 4m 12s · Writing the README`. If there's no to-do list, it counts the steps Claude has taken and names the last one. When Claude is **waiting on you**, it says so: `⏸ waiting for you: allow Bash?`. |
 | **Token** | Tokens used by this task (including any helpers), by the whole chat so far, and how full Claude's **context window** is: `12.4k this task · 412k this chat · context 68%`. When the context gets near full, Claude summarises the chat to make room and can lose detail, so a high number is a hint to start a fresh chat for a new topic. |
 
 The bars:
 
-- **Week:** split into days, each day in its own colour, matching the letters in the day chart. You can see which days used the most. Grey is usage from before CuteStatus started counting this week.
+- **Week:** split into days, each day in its own colour, matching the coloured day names in the text. You can see which days used the most. Grey is usage from before CuteStatus started counting this week.
 - **Task and Token:** turn from **green** to **amber** to **red** as they fill. The 5-hour limit and the context window use the same colours in their text.
 
 ## Helpers (subagents)
@@ -107,7 +107,7 @@ On first run it creates `~/.claude/cute-status.json`. Edit it any time; changes 
 
 - **Week:** comes straight from your Claude plan's real weekly limit, which Claude subscriptions report. If your plan doesn't report one (for example, API-key billing), CuteStatus estimates it from the tokens it has counted and the settings above, and adds **(est.)** to the row.
 - **5-hour limit and context:** reported by Claude Code itself, so they're real figures. They appear once the first reply of a chat has come back.
-- **Day chart:** CuteStatus notes your weekly percentage as the days go by, so it can only split days it was running for. Usage from before it started counting shows as grey.
+- **Days:** CuteStatus notes your weekly percentage as the days go by, so it can only split days it was running for. Usage from before it started counting shows as grey.
 - **Task:** read from Claude's own to-do list as it updates.
 - **Token:** the new input and output tokens of every request in the task, including every helper's. "This chat" counts from when CuteStatus started running in that chat. Tokens served from Claude's prompt cache aren't counted, so this is "new work done", not everything the model read.
 

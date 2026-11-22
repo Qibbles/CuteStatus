@@ -73,13 +73,12 @@ function tone(pct: number): 'success' | 'warning' | 'error' {
 
 // Colours that tell the main conversation ("you") and each helper apart in
 // the Task and Token bars; mid-tones that read on light and dark themes.
-// One colour per weekday for the Week bar and its day chart; grey for usage
+// One colour per weekday for the Week bar and the day names; grey for usage
 // from before the band started counting this week.
 const DAY_COLORS = ['#d4609a', '#4f86c6', '#2fb5a3', '#e0a020', '#e07a5f', '#b07cd8', '#7aa63c']
 const dayColor = (weekday: number) => DAY_COLORS[weekday % 7] ?? '#8a8f98'
 const EARLIER_COLOR = '#8a8f98'
 const DAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
-const SPARK = ['▁', '▁', '▂', '▃', '▄', '▅', '▆', '▇']
 
 /** 4m 12s, 1h 3m, 45s. */
 function duration(ms: number): string {
@@ -581,8 +580,7 @@ export const register: Register = on => {
 
     // --- Row 1: Week -----------------------------------------------------
     // The bar is this week's usage split into days, one colour per weekday;
-    // the text adds the 5-hour limit and a tiny day-by-day chart in the same
-    // colours. "(estimate)" appears only when the plan's real figure is not
+    // the text adds the 5-hour limit and the day names in the same colours. "(estimate)" appears only when the plan's real figure is not
     // available.
     const wPct = data.weekPct
     const left = data.resetAt > 0 ? countdown(data.resetAt - data.now) : '?'
@@ -609,29 +607,26 @@ export const register: Register = on => {
             { t: pctText(fivePct), bold: true, color: tone(fivePct) },
             ...(long && fiveLeft ? [{ t: ` (resets ${shortSpan(fiveLeft)})`, dim: true }] : []),
           ]
-    // The day chart: a letter pair per day, a block as tall as that day's
-    // share of the busiest day, in the day's colour; today in bold.
-    const peak = Math.max(0, ...(days?.used ?? []))
-    const chart = (withGaps: boolean): Part[] =>
-      !days || peak <= 0
+    // The day key: each day's name in that day's colour, matching its part
+    // of the bar; today in bold.
+    const chart = (): Part[] =>
+      !days || !days.used.some(u => u > 0)
         ? []
         : [
             { t: ' ', dim: true },
-            ...days.used.flatMap((u, i): Part[] => [
-              {
-                t: `${withGaps ? ' ' : ''}${DAY_LETTERS[days.weekday[i] ?? 0]}${SPARK[Math.min(7, Math.round((u / peak) * 7))]}`,
-                color: dayColor(days.weekday[i] ?? 0),
-                bold: i === days.used.length - 1,
-              },
-            ]),
+            ...days.used.map((_, i): Part => ({
+              t: ` ${DAY_LETTERS[days.weekday[i] ?? 0]}`,
+              color: dayColor(days.weekday[i] ?? 0),
+              bold: i === days.used.length - 1,
+            })),
           ]
     const pctBold: Part = { t: ` ${pctText(wPct)}`, bold: true }
     const est = isEstimate ? ' (est.)' : ''
     const weekText = fit(
       [
-        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(true), ...chart(true)],
-        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(false), ...chart(true)],
-        [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false), ...chart(false)],
+        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(true), ...chart()],
+        [pctBold, { t: ` used · resets in ${left}${est}`, dim: true }, ...five(false), ...chart()],
+        [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false), ...chart()],
         [pctBold, { t: ` · resets ${shortSpan(left)}${est}`, dim: true }, ...five(false)],
         [pctBold, ...five(false)],
         [pctBold],
