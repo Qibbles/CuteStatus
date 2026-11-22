@@ -69,9 +69,32 @@ function tone(pct: number): 'success' | 'warning' | 'error' {
   return pct < 50 ? 'success' : pct < 80 ? 'warning' : 'error'
 }
 
-function bar(pct: number, width: number): [string, string] {
-  const fill = Math.round((Math.min(100, Math.max(0, pct)) / 100) * width)
-  return ['█'.repeat(fill), '░'.repeat(width - fill)]
+// Colours that tell the main conversation ("you") and each helper apart in
+// the Task and Token bars; mid-tones that read on light and dark themes.
+const YOU_COLOR = '#4f86c6'
+const HELPER_COLORS = ['#e07a5f', '#2fb5a3', '#b07cd8', '#e0a020', '#d4609a', '#7aa63c']
+const helperColor = (h: Helper, i: number) => HELPER_COLORS[(h.color ?? i) % HELPER_COLORS.length] ?? YOU_COLOR
+
+type Seg = { len: number; color: string }
+
+/** Splits `cells` filled cells among the parts by weight (largest remainder). */
+function segments(parts: { weight: number; color: string }[], cells: number): Seg[] {
+  const live = parts.filter(p => p.weight > 0)
+  const sum = live.reduce((n, p) => n + p.weight, 0)
+  if (sum <= 0 || cells <= 0) return []
+  const exact = live.map(p => (p.weight / sum) * cells)
+  const segs = live.map((p, i) => ({ len: Math.floor(exact[i] ?? 0), color: p.color }))
+  let left = cells - segs.reduce((n, x) => n + x.len, 0)
+  const order = exact.map((x, i) => [x - Math.floor(x), i] as const).sort((a, b) => b[0] - a[0])
+  for (const [, i] of order) {
+    if (left <= 0) break
+    const seg = segs[i]
+    if (seg) {
+      seg.len += 1
+      left -= 1
+    }
+  }
+  return segs.filter(x => x.len > 0)
 }
 
 async function loadPngs($: EngineInterface): Promise<void> {
@@ -101,6 +124,8 @@ function freshData(cfg: Config): BandData {
     taskTokens: 0,
     mainTokens: 0,
     helpers: [],
+    chatTokens: 0,
+    helperSeq: 0,
     taskCap: cfg.taskTokenSoftCap,
     isRunning: false,
     frame: 0,
@@ -216,7 +241,8 @@ function startTask(): void {
 function helperFor(id: string): Helper {
   let h = S.d.helpers.find(x => x.id === id)
   if (!h) {
-    h = { id, name: 'helper', tokens: 0, calls: 0, status: 'running' }
+    h = { id, name: 'helper', tokens: 0, calls: 0, status: 'running', color: S.d.helperSeq ?? 0 }
+    S.d.helperSeq = (S.d.helperSeq ?? 0) + 1
     S.d.helpers = [...S.d.helpers, h]
   }
   return h
@@ -294,6 +320,7 @@ export const register: Register = on => {
     if (r?.usage) {
       const n = r.usage.input_tokens + r.usage.output_tokens
       S.d.taskTokens += n
+      S.d.chatTokens = (S.d.chatTokens ?? 0) + n
       if (e.agentId === undefined) S.d.mainTokens += n
       else helperFor(e.agentId).tokens += n
       S.estimate.tokens += n
@@ -423,34 +450,78 @@ export const register: Register = on => {
       (total > 0 ? 'all done' : data.lastTool || (running ? 'thinking…' : 'idle'))
     const tPct = total > 0 ? (done / total) * 100 : running ? ((data.frame % 5) + 1) * 20 : 0
     const tLabel = total > 0 ? `${done}/${total}` : `${data.toolCalls} calls`
-    const tColor = total > 0 ? tone(tPct) : 'suggestion'
     const room = Math.max(8, cols - MASCOT_COLS - LABEL - W - tLabel.length - 5)
     const curText = current.length > room ? current.slice(0, room - 1) + '…' : current
 
-    // Row 4 (only while helpers are on the task): one entry per subagent.
+    // Helpers (subagents) on this task, each with its own colour.
     const helpers = data.helpers ?? []
+    const hasHelpers = helpers.length > 0
     const hDone = helpers.filter(h => h.status !== 'running').length
-    const hPct = helpers.length > 0 ? (hDone / helpers.length) * 100 : 0
-    const helperText = helpers
-      .map(h => {
-        const own = data.steps.filter(s => s.owner === h.id)
-        const progress = own.length > 0
-          ? `${own.filter(s => s.status === 'completed').length}/${own.length}`
-          : `${h.calls} steps`
-        const mark = h.status === 'running' ? '●' : h.status === 'done' ? '✓' : '✗'
-        const name = h.name.length > 22 ? h.name.slice(0, 21) + '…' : h.name
-        return `${mark} ${name} ${progress} · ${fmt(h.tokens)}`
-      })
-      .join('   ')
-    const helperRoom = Math.max(10, cols - MASCOT_COLS - LABEL - W - 14)
-    const helperLine = helperText.length > helperRoom ? helperText.slice(0, helperRoom - 1) + '…' : helperText
     const mainTokens = data.mainTokens ?? data.taskTokens
-    const split = helpers.length > 0
-      ? ` · you ${fmt(mainTokens)} + helpers ${fmt(Math.max(0, data.taskTokens - mainTokens))}`
-      : ''
+    const helperIds = new Set(helpers.map(h => h.id))
+    const isMine = (s: Step) => !s.owner || !helperIds.has(s.owner)
 
-    // Row 3: task tokens
+    // Task bar: alone, green to red as it fills; with helpers, each one's
+    // finished to-do items in its colour, yours in blue.
+    const tSegs: Seg[] =
+      total > 0 && hasHelpers
+        ? segments(
+            [
+              { weight: data.steps.filter(s => s.status === 'completed' && isMine(s)).length, color: YOU_COLOR },
+              ...helpers.map((h, i) => ({
+                weight: data.steps.filter(s => s.status === 'completed' && s.owner === h.id).length,
+                color: helperColor(h, i),
+              })),
+            ],
+            Math.round((done / total) * W),
+          )
+        : [{ len: Math.round((Math.min(100, tPct) / 100) * W), color: total > 0 ? tone(tPct) : 'suggestion' }]
+
+    // Token bar: the same idea, split by who used the tokens.
     const kPct = (data.taskTokens / data.taskCap) * 100
+    const kCells = Math.round((Math.min(100, kPct) / 100) * W)
+    const kSegs: Seg[] = hasHelpers
+      ? segments(
+          [
+            { weight: mainTokens, color: YOU_COLOR },
+            ...helpers.map((h, i) => ({ weight: h.tokens, color: helperColor(h, i) })),
+          ],
+          kCells,
+        )
+      : [{ len: kCells, color: tone(kPct) }]
+
+    // Helpers bar: one equal slice per finished helper, in its colour.
+    const hSegs = segments(
+      helpers.map((h, i) => ({ weight: h.status === 'running' ? 0 : 1, color: helperColor(h, i) })),
+      hasHelpers ? Math.round((hDone / helpers.length) * W) : 0,
+    )
+
+    // The Helpers row doubles as the colour key: ■ you, then each helper.
+    const legend: { key: string; color: string; text: string }[] = hasHelpers
+      ? [
+          { key: 'you', color: YOU_COLOR, text: `you ${fmt(mainTokens)}` },
+          ...helpers.map((h, i) => {
+            const own = data.steps.filter(s => s.owner === h.id)
+            const progress = own.length > 0
+              ? `${own.filter(s => s.status === 'completed').length}/${own.length}`
+              : `${h.calls} steps`
+            const state = h.status === 'done' ? ' ✓' : h.status === 'failed' ? ' ✗' : ''
+            const name = h.name.length > 22 ? h.name.slice(0, 21) + '…' : h.name
+            return { key: h.id, color: helperColor(h, i), text: `${name}${state} ${progress} · ${fmt(h.tokens)}` }
+          }),
+        ]
+      : []
+    let legendRoom = Math.max(10, cols - MASCOT_COLS - LABEL - W - 14)
+    const legendShown: typeof legend = []
+    for (const item of legend) {
+      const need = item.text.length + 5
+      if (need > legendRoom) {
+        legendShown.push({ key: 'more', color: '', text: `+${legend.length - legendShown.length} more` })
+        break
+      }
+      legendShown.push(item)
+      legendRoom -= need
+    }
 
     const mood = moodFor(wPct)
     const activity: Activity = running ? 'busy' : 'sleep'
@@ -476,15 +547,19 @@ export const register: Register = on => {
         face
       )
 
-    const row = (label: string, pct: number, color: string, children: unknown) => (
+    const row = (label: string, segs: Seg[], children: unknown) => (
       <Box flexDirection="row">
         <Box width={LABEL} flexShrink={0}>
           <Text dimColor>{label}</Text>
         </Box>
         <Box width={W} flexShrink={0}>
           <Text mono>
-            <Text color={color}>{bar(pct, W)[0]}</Text>
-            <Text dimColor>{bar(pct, W)[1]}</Text>
+            {segs.map((g, i) => (
+              <Text key={`s${i}`} color={g.color}>
+                {'█'.repeat(g.len)}
+              </Text>
+            ))}
+            <Text dimColor>{'░'.repeat(Math.max(0, W - segs.reduce((n, g) => n + g.len, 0)))}</Text>
           </Text>
         </Box>
         <Box marginLeft={1} flexGrow={1} flexShrink={1}>
@@ -501,8 +576,7 @@ export const register: Register = on => {
         <Box flexDirection="column" flexGrow={1}>
           {row(
             'Week',
-            wPct,
-            tone(wPct),
+            [{ len: Math.round((Math.min(100, wPct) / 100) * W), color: tone(wPct) }],
             [
               <Text key="a" bold>{` ${pctText(wPct)}`}</Text>,
               <Text key="b" dimColor>{weekExtra}</Text>,
@@ -510,8 +584,7 @@ export const register: Register = on => {
           )}
           {row(
             'Task',
-            tPct,
-            tColor,
+            tSegs,
             [
               <Text key="a" bold>{` ${tLabel} `}</Text>,
               <Text key="b">{curText}</Text>,
@@ -519,17 +592,25 @@ export const register: Register = on => {
           )}
           {row(
             'Token',
-            kPct,
-            tone(kPct),
+            kSegs,
             [
               <Text key="a" bold>{` ${fmt(data.taskTokens)}`}</Text>,
-              <Text key="b" dimColor>{` tokens this task${split}`}</Text>,
+              <Text key="b" dimColor>{' this task · '}</Text>,
+              <Text key="c" bold>{fmt(data.chatTokens ?? data.taskTokens)}</Text>,
+              <Text key="d" dimColor>{' this chat'}</Text>,
             ],
           )}
-          {helpers.length > 0
-            ? row('Helpers', hPct, tone(hPct), [
+          {hasHelpers
+            ? row('Helpers', hSegs, [
                 <Text key="a" bold>{` ${hDone}/${helpers.length} done `}</Text>,
-                <Text key="b" dimColor>{helperLine}</Text>,
+                ...legendShown.flatMap(item =>
+                  item.key === 'more'
+                    ? [<Text key="more" dimColor>{` ${item.text}`}</Text>]
+                    : [
+                        <Text key={`m-${item.key}`} color={item.color}>{' ■ '}</Text>,
+                        <Text key={`t-${item.key}`} dimColor>{item.text}</Text>,
+                      ],
+                ),
               ])
             : null}
         </Box>

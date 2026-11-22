@@ -16,6 +16,8 @@ export type Helper = {
   /** Tool calls it has made, for progress when it keeps no to-do list. */
   calls: number
   status: 'running' | 'done' | 'failed'
+  /** Its colour slot in the band, kept for the helper's whole life. */
+  color?: number
 }
 
 export type BandData = {
@@ -37,6 +39,10 @@ export type BandData = {
   /** The main conversation's share of taskTokens; the rest is the helpers'. */
   mainTokens: number
   helpers: Helper[]
+  /** Input + output tokens of the whole chat since the band started counting. */
+  chatTokens: number
+  /** How many helpers have been given a colour so far. */
+  helperSeq: number
   taskCap: number
   isRunning: boolean
   frame: number
