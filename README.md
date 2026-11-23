@@ -22,7 +22,7 @@
 
 - **A heads-up display:** a three-line band above the prompt with your weekly and 5-hour limits, task progress and timer, tokens and context, helpers in colour, and a heads-up when Claude is waiting on you.
 - **A token saver:** noisy tool output is trimmed before Claude reads it. A 900-test run goes from ~15,000 tokens to ~300, with the failure kept whole. Unchanged files aren't re-read, and replies stay short.
-- **A model router:** each part of a task goes to the cheapest model that can do it well: Haiku for easy work, Sonnet for routine coding, and your main model (often Opus) for the hard parts, so your limits stretch further.
+- **A model router:** each part of a task goes to the cheapest model that can do it well: Haiku for easy work, Sonnet for routine coding, and your chosen model (often Opus) for the hard parts, so your limits stretch further.
 
 There's nothing to set up or switch on. The band and the token saver run on your computer and never call a model. The router only makes a small Haiku call to plan big, multi-part requests.
 
@@ -161,7 +161,7 @@ Not every part of a task needs Claude's biggest model. The router sorts the work
 |---|---|---|
 | **Easy** | Searching or reading code, collecting facts, summarising, renaming, formatting, docs, boilerplate | **Haiku**: the smallest, cheapest model |
 | **Medium** | Routine coding from a clear spec: straightforward code, tests, pages, small features, conversions | **Sonnet**: a strong all-rounder, much lighter on limits than Opus |
-| **Hard** | Design, debugging, tricky changes, anything needing careful reasoning | **Your main model**: whatever your chat runs on, often Opus |
+| **Hard** | Design, debugging, tricky changes, anything needing careful reasoning | **Your chosen model**: the one you picked for the chat, often Opus |
 
 On Claude plans, smaller models use up your 5-hour and weekly limits far more slowly, so the same work stretches further.
 
@@ -269,8 +269,8 @@ There's nothing to set. If you ever want to change it, add a `"router"` section 
 | Setting | Default | What it does |
 |---|---|---|
 | `enabled` | `true` | The whole router: instruction, safety net and pre-read |
-| `tiers.easy` | `"haiku"` | The model easy work goes to (`null` keeps it on Claude's own model) |
-| `tiers.medium` | `"sonnet"` | The model routine coding goes to (`null` keeps it on Claude's own model) |
+| `tiers.easy` | `"haiku"` | The model easy work goes to (`null` keeps it on your chosen model) |
+| `tiers.medium` | `"sonnet"` | The model routine coding goes to (`null` keeps it on your chosen model) |
 | `maxPreReadsPerChat` | `20` | At most this many pre-reads in one chat |
 
 ## Where the numbers come from
