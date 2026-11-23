@@ -22,7 +22,7 @@
 
 - **A heads-up display:** a three-line band above the prompt with your weekly and 5-hour limits, task progress and timer, tokens and context, helpers in colour, and a heads-up when Claude is waiting on you.
 - **A token saver:** noisy tool output is trimmed before Claude reads it. A 900-test run goes from ~15,000 tokens to ~300, with the failure kept whole. Unchanged files aren't re-read, and replies stay short.
-- **A model router:** the easy parts of a task go to the cheaper Haiku model and the hard parts stay with Claude, so your limits stretch further.
+- **A model router:** each part of a task goes to the cheapest model that can do it well: Haiku for easy work, Sonnet for routine coding, and Claude's own model for the hard parts, so your limits stretch further.
 
 There's nothing to set up or switch on. The band and the token saver run on your computer and never call a model. The router only makes a small Haiku call to plan big, multi-part requests.
 
@@ -155,23 +155,35 @@ How much you save depends on how noisy your tools are: test runners, builds, log
 
 ![How the model router splits a request](docs/router.png)
 
-Not every part of a task needs Claude's biggest model. Searching code, collecting facts, summarising, renaming and formatting are easy work. Design, debugging and tricky changes are hard. The router sends easy parts to **Haiku**, a smaller and much cheaper model, and keeps the hard parts on Claude's own model. On Claude plans, Haiku uses up your 5-hour and weekly limits far more slowly, so the same work stretches further.
+Not every part of a task needs Claude's biggest model. The router sorts the work into three tiers and sends each to the cheapest model that does it well:
+
+| Tier | Typical work | Runs on |
+|---|---|---|
+| **Easy** | Searching or reading code, collecting facts, summarising, renaming, formatting, docs, boilerplate | **Haiku**: the smallest, cheapest model |
+| **Medium** | Routine coding from a clear spec: straightforward code, tests, pages, small features, conversions | **Sonnet**: a strong all-rounder, much lighter on limits than Opus |
+| **Hard** | Design, debugging, tricky changes, anything needing careful reasoning | **Claude's own model**: whatever you chose for the chat |
+
+On Claude plans, smaller models use up your 5-hour and weekly limits far more slowly, so the same work stretches further.
+
+**It only ever routes down.** If your chat runs on Sonnet, routine coding stays with Sonnet and only easy work goes to Haiku. On Haiku, nothing is routed. Your main conversation's model is never changed.
+
+**It keeps up with new models.** Models are picked by family name (`haiku`, `sonnet`), and Claude Code always uses the newest version of that family, so when a new Haiku or Sonnet comes out the router uses it automatically. A brand-new model family is ranked in a Kibbles update; until then it's treated as the most capable model, so routing still works around it.
 
 It decides everything by itself, per request, in three layers:
 
 | Layer | When | What it does | Cost |
 |---|---|---|---|
-| **1. Standing instruction** | Every chat | Tells Claude: when a request has separate easy and hard parts, hand the easy, self-contained ones to Haiku helpers and do the hard ones yourself. Don't split small tasks or tightly linked parts. If a Haiku helper gets something wrong, redo it. | A few dozen tokens, once per chat, kept in the prompt cache |
-| **2. Safety net** | Whenever Claude starts a helper without choosing a model | If the helper's job reads as easy (search, read, explore, summarise, list, format, docs…), it runs on Haiku. Anything that sounds hard (design, debug, fix, refactor, review, plan…) is left alone. | Free |
-| **3. Pre-read** | Only for **big, multi-part** requests: three or more listed jobs, "these 10 sites", "all the endpoints", or a long message | Before Claude starts, Haiku reads your message and lists its easy and hard parts. Claude gets that list as a suggestion and still decides. Short questions and follow-ups like "yes, go ahead" skip this. | One small Haiku call, usually a few hundred tokens, counted in the band |
+| **1. Standing instruction** | Every chat | Tells Claude: when a request has parts of different difficulty, hand self-contained easy parts to Haiku helpers and routine coding to Sonnet helpers, and do the hard parts yourself. Don't split small tasks or tightly linked parts. If a helper gets something wrong, redo it. | A few dozen tokens, once per chat, kept in the prompt cache |
+| **2. Safety net** | Whenever Claude starts a helper without choosing a model | Reads the helper's job: search/read/summarise/format… goes to Haiku, write/build/test/add… goes to Sonnet. Anything that sounds hard (design, debug, fix, refactor, review, plan…) is left alone. | Free |
+| **3. Pre-read** | Only for **big, multi-part** requests: three or more listed jobs, "these 10 sites", "all the endpoints", or a long message | Before Claude starts, Haiku reads your message and sorts its parts into the three tiers. Claude gets that as a suggestion and still decides. Short questions and follow-ups like "yes, go ahead" skip this. | One small Haiku call, usually a few hundred tokens, counted in the band |
 
-**When limits run low**, past 80% of your 5-hour or weekly limit, it leans harder on Haiku. Claude is told once to delegate more readily, the safety net sends any helper that isn't clearly hard to Haiku, and the pre-read also kicks in for medium-sized requests.
+**When limits run low**, past 80% of your 5-hour or weekly limit, everything that isn't clearly hard shifts down a tier: routine coding goes to Haiku, and jobs it can't classify go to Sonnet. Claude is told once to delegate more readily, and the pre-read also kicks in for medium-sized requests.
 
 **What you see in the band:**
-- **Task row:** `⑂ 2 easy → haiku` when the pre-read split a request.
+- **Task row:** `⑂ 2 → haiku · 1 → sonnet` when the pre-read split a request.
 - **Helper key:** each helper's model, when it differs from Claude's own: `■ Write the copy · haiku 3/3 · 9k`.
 
-**What it won't do:** it never changes the model of your main conversation. It never touches a helper Claude gave a model to on purpose. It never routes forks or teammates.
+**What it won't do:** it never changes the model of your main conversation. It never touches a helper Claude gave a model to on purpose. It never routes forks or teammates. It never sends work to a bigger model.
 
 ## Meet Kibbles
 
@@ -251,13 +263,14 @@ They go in a `"tokenSaver"` section. Put it in `~/.claude/kibbles.json` for all 
 There's nothing to set. If you ever want to change it, add a `"router"` section to `~/.claude/kibbles.json`:
 
 ```json
-{ "router": { "enabled": true, "cheapModel": "haiku", "maxPreReadsPerChat": 20 } }
+{ "router": { "enabled": true, "tiers": { "easy": "haiku", "medium": "sonnet" }, "maxPreReadsPerChat": 20 } }
 ```
 
 | Setting | Default | What it does |
 |---|---|---|
 | `enabled` | `true` | The whole router: instruction, safety net and pre-read |
-| `cheapModel` | `"haiku"` | The model easy work goes to |
+| `tiers.easy` | `"haiku"` | The model easy work goes to (`null` keeps it on Claude's own model) |
+| `tiers.medium` | `"sonnet"` | The model routine coding goes to (`null` keeps it on Claude's own model) |
 | `maxPreReadsPerChat` | `20` | At most this many pre-reads in one chat |
 
 ## Where the numbers come from

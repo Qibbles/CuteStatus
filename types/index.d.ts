@@ -70,7 +70,7 @@ export type BandData = {
   /** This week's usage by day: what was used before the band started counting, then one entry per day so far. */
   days?: WeekDays
   /** What the model router split off this task: easy parts sent to a cheaper model. */
-  routeNote?: { easy: number; hard: number; model: string }
+  routeNote?: { routes: { model: string; count: number }[] }
   /** The main conversation's model family (haiku, sonnet, opus). */
   mainModel?: string
   /** What Claude is waiting on you for (a permission, a question); absent when it isn't. */

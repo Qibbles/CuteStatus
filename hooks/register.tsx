@@ -473,7 +473,7 @@ export const register: Register = on => {
     if (note) context.push(note)
     // The model router: for a big multi-part request, a quick pre-read on the
     // cheap model suggests which parts to hand to cheaper helpers.
-    const route = await routerPlan($, e.text, underPressure())
+    const route = await routerPlan($, e.text, underPressure(), S.d.mainModel)
     if (route.tokens > 0) {
       S.d.taskTokens += route.tokens
       S.d.mainTokens += route.tokens
@@ -538,7 +538,7 @@ export const register: Register = on => {
   on('agent.spawn', async ($, e, next) => {
     // The router's safety net: an easy helper with no model chosen runs on
     // the cheaper model.
-    const routed = routerSpawnModel(e, underPressure())
+    const routed = routerSpawnModel(e, underPressure(), S.d.mainModel)
     const r = await next(routed ? { ...e, model: routed } : e)
     if (r.deny === undefined && r.agentId) {
       const h = helperFor(r.agentId)
@@ -771,9 +771,12 @@ export const register: Register = on => {
     // How long the task has taken: live while it runs, final once it ends.
     const elapsed = data.taskStart ? (data.taskEnd || data.now) - data.taskStart : 0
     const timer: Part[] = elapsed >= 1000 ? [{ t: ` · ${duration(elapsed)}`, dim: true }] : []
-    // What the model router split off: "⑂ 2 easy → haiku".
-    const rn = data.routeNote
-    const routed: Part[] = rn ? [{ t: ' · ', dim: true }, { t: `⑂ ${rn.easy} easy → ${rn.model}`, color: 'success' }] : []
+    // What the model router split off: "⑂ 2 → haiku · 1 → sonnet".
+    const routes = data.routeNote?.routes ?? []
+    const routed: Part[] =
+      routes.length > 0
+        ? [{ t: ' · ', dim: true }, { t: `⑂ ${routes.map(r => `${r.count} → ${r.model}`).join(' · ')}`, color: 'success' }]
+        : []
     const head: Part = { t: ` ${taskLabel}`, bold: true }
 
     // With helpers, the text is the colour key: ■ you, then each helper with
