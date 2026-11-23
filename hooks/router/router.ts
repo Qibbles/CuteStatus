@@ -16,7 +16,9 @@
 //
 // Three layers, chosen automatically:
 // 1. A standing instruction (in the system prompt, fixed for the chat so the
-//    prompt cache holds): split mixed requests across the tiers.
+//    prompt cache holds): split mixed requests across the tiers, and before
+//    replying, review what routine-coding helpers changed (their diff, plus
+//    tests or a build) while trusting easy, read-only results.
 // 2. A safety net: a helper Claude starts with no model chosen gets its
 //    tier's model, judged from its job description.
 // 3. A quick pre-read on the easy model, only for big multi-part requests:
@@ -145,6 +147,15 @@ export function routerInstruction(cfg: RouterConfig = R.cfg): string | null {
       "lot of context, or when the parts depend tightly on each other. If a subagent's result looks wrong or " +
       'incomplete, redo that part yourself.',
   )
+  if (medium) {
+    // Review by risk: reading a diff costs far less than writing the code.
+    lines.push(
+      'Before you reply to the user, review what each routine-coding subagent changed: read its diff (for ' +
+        'example git diff) rather than whole files, run the project\'s tests or build when it has them, and fix ' +
+        'anything wrong yourself. Easy-tier results (searches, reads, summaries) change nothing and can be taken ' +
+        'on trust unless something looks off.',
+    )
+  }
   return lines.join('\n')
 }
 

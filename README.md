@@ -173,9 +173,19 @@ It decides everything by itself, per request, in three layers:
 
 | Layer | When | What it does | Cost |
 |---|---|---|---|
-| **1. Standing instruction** | Every chat | Tells Claude: when a request has parts of different difficulty, hand self-contained easy parts to Haiku helpers and routine coding to Sonnet helpers, and do the hard parts yourself. Don't split small tasks or tightly linked parts. If a helper gets something wrong, redo it. | A few dozen tokens, once per chat, kept in the prompt cache |
+| **1. Standing instruction** | Every chat | Tells Claude: when a request has parts of different difficulty, hand self-contained easy parts to Haiku helpers and routine coding to Sonnet helpers, and do the hard parts yourself. Don't split small tasks or tightly linked parts. Check the Sonnet helpers' changes before replying, and redo anything that's wrong. | A few dozen tokens, once per chat, kept in the prompt cache |
 | **2. Safety net** | Whenever Claude starts a helper without choosing a model | Reads the helper's job: search/read/summarise/format… goes to Haiku, write/build/test/add… goes to Sonnet. Anything that sounds hard (design, debug, fix, refactor, review, plan…) is left alone. | Free |
 | **3. Pre-read** | Only for **big, multi-part** requests: three or more listed jobs, "these 10 sites", "all the endpoints", or a long message | Before Claude starts, Haiku reads your message and sorts its parts into the three tiers. Claude gets that as a suggestion and still decides. Short questions and follow-ups like "yes, go ahead" skip this. | One small Haiku call, usually a few hundred tokens, counted in the band |
+
+**Your chosen model has the last word.** It reads your request, decides the split (the pre-read is only a suggestion), starts the helpers and gets every helper's report back before it answers you. It also **checks the work by risk** before replying:
+
+| Helper | Check |
+|---|---|
+| **Haiku (easy work)** | Trusted. Searches, reads and summaries change nothing. |
+| **Sonnet (routine coding)** | Your chosen model reads the **diff** of what it changed and runs the project's **tests or build** if there are any, and fixes anything wrong itself. |
+| **Hard parts** | Done by your chosen model in the first place. |
+
+The check is cheap because **reading costs far less than writing**: models charge several times more for text they write than for text they read, and a diff is much shorter than the code itself. So you keep most of the savings while a stronger model still signs off on the work.
 
 **When limits run low**, past 80% of your 5-hour or weekly limit, everything that isn't clearly hard shifts down a tier: routine coding goes to Haiku, and jobs it can't classify go to Sonnet. Claude is told once to delegate more readily, and the pre-read also kicks in for medium-sized requests.
 

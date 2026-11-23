@@ -92,5 +92,8 @@ test('settings: tiers on by default, each can be changed or switched off', () =>
   const both = routerInstruction(resolveRouterConfig(undefined)) ?? ''
   expect(both).toContain('model: "haiku"')
   expect(both).toContain('model: "sonnet"')
+  // Routine-coding helpers' work is checked before Claude replies.
+  expect(both).toContain('read its diff')
+  expect(routerInstruction(resolveRouterConfig({ tiers: { medium: null } })) ?? '').not.toContain('read its diff')
   expect(routerInstruction(resolveRouterConfig({ tiers: { easy: null, medium: null } }))).toBe(null)
 })
