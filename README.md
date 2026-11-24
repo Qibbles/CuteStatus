@@ -90,13 +90,13 @@ The band is three lines tall:
 
 | Row | What it means |
 |---|---|
-| **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end is how much each **day** used, each name in the colour of its part of the bar (`· earlier 40% We 8% Th 12% Fr 3%`), with today in bold. **Earlier** (grey) is usage from before Kibbles started counting this week. Days with nothing measured are left out. |
+| **Week** | How much of your weekly limit you've used and when it resets, then your **5-hour limit** (`5h 23%`) and when that resets. At the end is how much each **day** used, each name in the colour of its part of the bar (`· untracked 63% Su 5% Tu 2%`), with today in bold. **Untracked** (grey) is usage while Kibbles wasn't running, so it can't say which day it belongs to. |
 | **Task** | How far along the current task is, from Claude's to-do list, and **how long it has taken**: `3/6 · 4m 12s · Writing the README`. If there's no to-do list, it counts the steps Claude has taken and names the last one. When Claude is **waiting on you**, it says so: `⏸ waiting for you: allow Bash?`. |
 | **Token** | Tokens used by this task (including any helpers), by the whole chat so far, what the **token saver** kept out of the chat, and how full Claude's **context window** is: `12.4k this task · 412k this chat · saved 38k · context 68%` (on a narrow window: `12.4k task · 412k chat · context 68%`). When the context gets near full, Claude summarises the chat to make room and can lose detail, so a high number is a hint to start a fresh chat for a new topic. |
 
 The bars:
 
-- **Week:** split into days, each day in its own colour, matching the coloured day names in the text. You can see which days used the most. Grey is usage from before Kibbles started counting this week.
+- **Week:** split into days, each day in its own colour, matching the coloured day names in the text. A day only counts what Kibbles saw that day. Grey is untracked usage, shown where it happened in the week: before Kibbles first saw it, or between one day's last reading and the next day's first.
 - **Task and Token:** turn from **green** to **amber** to **red** as they fill. The 5-hour limit and the context window use the same colours in their text.
 
 ### Helpers (subagents)
@@ -287,7 +287,7 @@ There's nothing to set. If you ever want to change it, add a `"router"` section 
 
 - **Week:** comes straight from your Claude plan's real weekly limit, which Claude subscriptions report. If your plan doesn't report one (for example, API-key billing), Kibbles estimates it from the tokens it has counted and the settings above, and adds **(est.)** to the row.
 - **5-hour limit and context:** reported by Claude Code itself, so they're real figures. They appear once the first reply of a chat has come back.
-- **Days:** Kibbles notes your weekly percentage as the days go by, so it can only split days it was running for. Usage from before it started counting shows as grey.
+- **Days:** Claude only reports the week's running total, so Kibbles notes it as it goes: the first and last percentage it sees each day. A day's share is what rose while Kibbles was watching. The rest, such as usage on another computer or in claude.ai while no Kibbles session was open, is shown as untracked rather than guessed.
 - **Task:** read from Claude's own to-do list as it updates.
 - **Token:** the new input and output tokens of every request in the task, including every helper's. "This chat" counts from when Kibbles started running in that chat. Tokens served from Claude's prompt cache aren't counted, so this is "new work done", not everything the model read.
 

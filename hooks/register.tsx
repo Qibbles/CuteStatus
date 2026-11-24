@@ -2,6 +2,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { BandData, Helper, Step } from '../types'
 import { type Activity, mascotSvg, moodFor, textFace } from './mascot'
+import { type DayLog, dayNumber, dayParts, emptyLog, migrate, record } from './days'
 import {
   registerSaver,
   saverAfterToolCall,
@@ -22,8 +23,10 @@ import { modelFamily, routerLoadConfig, routerPlan, routerSessionStart, routerSp
 
 const DATA = { plugin: 'kibbles', key: 'data' } as const
 const STORE_KEY = 'weekly-estimate'
-// Calendar days (in the configured time zone) since the week began.
-const DAILY_KEY = 'weekly-by-date'
+// The week's readings per calendar day (hooks/days.ts); older versions kept
+// 'weekly-by-date' and 'weekly-by-day', which are carried over once.
+const DAILY_KEY = 'weekly-days'
+const LEGACY_DAILY_KEYS = ['weekly-by-date', 'weekly-by-day'] as const
 const DAY = 24 * 3600_000
 const WEEK = 7 * 24 * 3600_000
 const MASCOT_COLS = 8
@@ -235,7 +238,9 @@ const S = {
   storeDirty: false,
   realFiveHour: null as { pct: number; resetsAt?: number } | null,
   /** The weekly % last seen in each day of the week, to work out usage per day. */
-  daily: { periodStart: 0, firstSlot: -1, firstPct: 0, marks: [] as (number | null)[] },
+  daily: emptyLog(0) as DayLog,
+  /** What older versions recorded, read once at start to carry the week over. */
+  legacyDaily: {} as Record<string, unknown>,
   dailyDirty: false,
 }
 
@@ -306,32 +311,21 @@ function recompute(now: number): void {
   S.d.savedChat = saved.chat
   S.d.saverOn = saved.on
 
-  // Usage per day: remember the weekly % last seen on each calendar day of
-  // the week (in the configured time zone); a day's usage is how much it rose
-  // since the previous day we saw. A week can touch 8 calendar days.
+  // Usage per day (hooks/days.ts): the first and last weekly % seen on each
+  // calendar day of the week, in the configured time zone. A new week starts a
+  // new log; the first time this version runs, older records carry over.
   const offset = S.cfg.utcOffsetHours * 3600_000
-  const dayOf = (t: number) => Math.floor((t + offset) / DAY)
-  const slot = Math.max(0, Math.min(7, dayOf(now) - dayOf(periodStart)))
-  const pct = S.d.weekPct
-  if (S.daily.periodStart !== periodStart || S.daily.marks.length !== 8) {
-    S.daily = { periodStart, firstSlot: slot, firstPct: pct, marks: [null, null, null, null, null, null, null, null] }
+  const startDay = dayNumber(periodStart, offset)
+  const today = Math.max(0, Math.min(7, dayNumber(now, offset) - startDay))
+  if (S.daily.periodStart !== periodStart) {
+    const legacy = S.legacyDaily as Record<string, Parameters<typeof migrate>[2]>
+    S.daily = migrate(periodStart, offset, legacy['weekly-by-date'], legacy['weekly-by-day'])
     S.dailyDirty = true
   }
-  if ((S.daily.marks[slot] ?? -1) < pct) {
-    S.daily.marks[slot] = pct
-    S.dailyDirty = true
-  }
-  const used: number[] = []
-  const weekday: number[] = []
-  let last = S.daily.firstPct
-  for (let i = 0; i <= slot; i++) {
-    const mark = S.daily.marks[i]
-    const fromHere = i >= S.daily.firstSlot && mark !== null && mark !== undefined
-    used.push(fromHere ? Math.max(0, mark - last) : 0)
-    if (fromHere) last = mark
-    weekday.push(new Date((dayOf(periodStart) + i) * DAY).getUTCDay())
-  }
-  S.d.days = { before: S.daily.firstPct, used, weekday }
+  // Only real readings: before Claude reports the week, weekPct is Kibbles'
+  // own estimate, and recording it would credit a whole week to one day.
+  if (S.d.weekPctReal && record(S.daily, today, S.d.weekPct)) S.dailyDirty = true
+  S.d.days = { parts: dayParts(S.daily, today, i => new Date((startDay + i) * DAY).getUTCDay()) }
   if (S.realFiveHour) {
     S.d.fiveHourPct = S.realFiveHour.pct
     S.d.fiveHourResetAt = S.realFiveHour.resetsAt
@@ -432,8 +426,12 @@ export const register: Register = on => {
     await loadPngs($)
     const saved = (await $.store.get(STORE_KEY)) as typeof S.estimate | undefined
     if (saved && typeof saved.tokens === 'number') S.estimate = { ...saved }
-    const daily = (await $.store.get(DAILY_KEY)) as typeof S.daily | undefined
-    if (daily && Array.isArray(daily.marks)) S.daily = { ...daily, marks: [...daily.marks] }
+    const daily = (await $.store.get(DAILY_KEY)) as DayLog | undefined
+    if (daily && Array.isArray(daily.first) && Array.isArray(daily.last)) {
+      S.daily = { periodStart: daily.periodStart, first: [...daily.first], last: [...daily.last] }
+    } else {
+      for (const key of LEGACY_DAILY_KEYS) S.legacyDaily[key] = await $.store.get(key)
+    }
     const prev = (await $.state.get(DATA)).value
     S.d = prev
       ? { ...freshData(S.cfg), ...prev, steps: [...prev.steps], helpers: [...(prev.helpers ?? [])], isRunning: false, frame: 0 }
@@ -666,18 +664,16 @@ export const register: Register = on => {
     const wPct = data.weekPct
     const left = data.resetAt > 0 ? countdown(data.resetAt - data.now) : '?'
     const isEstimate = !data.weekPctReal || !data.resetReal
-    const days = data.days
+    // Older state (before day parts) is ignored until the next flush.
+    const days = data.days && Array.isArray(data.days.parts) ? data.days.parts : []
+    const daysSeen = days.some(p => p.weekday !== null && p.pct > 0)
     const wCells = Math.round((Math.min(100, wPct) / 100) * W)
-    const wSegs: Seg[] =
-      days && days.used.some(u => u > 0)
-        ? segments(
-            [
-              { weight: days.before, color: EARLIER_COLOR },
-              ...days.used.map((u, i) => ({ weight: u, color: dayColor(days.weekday[i] ?? 0) })),
-            ],
-            wCells,
-          )
-        : [{ len: wCells, color: tone(wPct) }]
+    const wSegs: Seg[] = daysSeen
+      ? segments(
+          days.map(p => ({ weight: p.pct, color: p.weekday === null ? EARLIER_COLOR : dayColor(p.weekday) })),
+          wCells,
+        )
+      : [{ len: wCells, color: tone(wPct) }]
     const fivePct = data.fiveHourPct
     const fiveLeft = data.fiveHourResetAt ? span(data.fiveHourResetAt - data.now) : ''
     const five = (long: boolean): Part[] =>
@@ -688,22 +684,19 @@ export const register: Register = on => {
             { t: pctText(fivePct), bold: true, color: tone(fivePct) },
             ...(long && fiveLeft ? [{ t: ` (resets ${shortSpan(fiveLeft)})`, dim: true }] : []),
           ]
-    // The day key: only days with measured usage, each name in its colour
-    // matching its part of the bar (today in bold), plus "earlier" for the
-    // grey part: usage from before Kibbles started counting this week.
+    // The day key: each day Kibbles saw usage on, its name in the colour of
+    // its part of the bar (today in bold), plus "untracked" for the grey
+    // parts: usage while Kibbles wasn't running, which can't be pinned to a day.
     const chart = (withPct: boolean): Part[] => {
-      if (!days || !days.used.some(u => u > 0)) return []
+      if (!daysSeen) return []
       const pctOf = (n: number) => (withPct ? ` ${pctText(n)}` : '')
       const parts: Part[] = [{ t: ' ·', dim: true }]
-      if (days.before > 0) parts.push({ t: ` earlier${pctOf(days.before)}`, color: EARLIER_COLOR })
-      days.used.forEach((u, i) => {
-        if (u <= 0) return
-        parts.push({
-          t: ` ${DAY_LETTERS[days.weekday[i] ?? 0]}${pctOf(u)}`,
-          color: dayColor(days.weekday[i] ?? 0),
-          bold: i === days.used.length - 1,
-        })
-      })
+      const untracked = days.filter(p => p.weekday === null).reduce((n, p) => n + p.pct, 0)
+      if (untracked > 0) parts.push({ t: ` untracked${pctOf(untracked)}`, color: EARLIER_COLOR })
+      for (const p of days) {
+        if (p.weekday === null || p.pct <= 0) continue
+        parts.push({ t: ` ${DAY_LETTERS[p.weekday] ?? ''}${pctOf(p.pct)}`, color: dayColor(p.weekday), bold: p.today })
+      }
       return parts
     }
     const pctBold: Part = { t: ` ${pctText(wPct)}`, bold: true }

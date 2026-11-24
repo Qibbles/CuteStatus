@@ -39,7 +39,15 @@ test('5-hour limit, day chart, task timer and context', async ($, on) => {
     ...data,
     fiveHourPct: 23, fiveHourResetAt: NOW + 100 * 60_000,
     contextPct: 68,
-    days: { before: 40, used: [10, 20, 15], weekday: [1, 2, 3] },
+    days: {
+      parts: [
+        { weekday: null, pct: 40, today: false },
+        { weekday: 1, pct: 10, today: false },
+        { weekday: 2, pct: 20, today: false },
+        { weekday: null, pct: 5, today: false },
+        { weekday: 3, pct: 15, today: true },
+      ],
+    },
     taskStart: NOW - 252_000, taskEnd: 0, isRunning: true,
   }
   on('state.get', () => ({ value: { value: more, version: 1 } }))
@@ -47,7 +55,7 @@ test('5-hour limit, day chart, task timer and context', async ($, on) => {
   const week = (await ui.find({ type: 'Text', text: /85%/ }))?.text ?? ''
   expect(week).toContain('· 5h 23% (resets 1h 40m)')
   // Only days with measured usage, each with its share, plus the earlier grey part.
-  expect(week).toContain('· earlier 40% Mo 10% Tu 20% We 15%')
+  expect(week).toContain('· untracked 45% Mo 10% Tu 20% We 15%')
   expect((await ui.find({ type: 'Text', text: /1\/3/ }))?.text).toContain('1/3 · 4m 12s · Writing config')
   expect((await ui.find({ type: 'Text', text: /12\.4k/ }))?.text).toContain('· context 68%')
   await ui.unmount()
@@ -93,7 +101,7 @@ test('long text never spills: rows get terser as the band narrows', async ($, on
     ...data,
     taskTokens: 30_000, mainTokens: 6_000, chatTokens: 412_000, helperSeq: 2,
     fiveHourPct: 23, fiveHourResetAt: NOW + 100 * 60_000, contextPct: 68,
-    days: { before: 40, used: [10, 20, 15, 0, 0], weekday: [1, 2, 3, 4, 5] },
+    days: { parts: [{ weekday: null, pct: 40, today: false }, { weekday: 1, pct: 10, today: false }, { weekday: 2, pct: 20, today: false }, { weekday: 3, pct: 15, today: true }] },
     taskStart: NOW - 252_000, taskEnd: 0,
     steps: [
       { id: '1', name: 'Refactoring /home/someone/projects/very-long-folder-name/src/components/Header.tsx', status: 'in_progress' as const },

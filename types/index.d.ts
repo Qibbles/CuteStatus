@@ -24,14 +24,10 @@ export type Helper = {
   color?: number
 }
 
-/** This week's usage, split by day. */
+/** This week's usage, split by day: in time order, each calendar day Kibbles
+ * saw (weekday 0 = Sunday) and, with weekday null, untracked stretches. */
 export type WeekDays = {
-  /** Percent used before the band first saw this week. */
-  before: number
-  /** Percent used each day, from the week's first day to today. */
-  used: number[]
-  /** The weekday of each entry, 0 = Sunday. */
-  weekday: number[]
+  parts: { weekday: number | null; pct: number; today: boolean }[]
 }
 
 export type BandData = {
