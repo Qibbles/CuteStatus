@@ -10,11 +10,6 @@
       "name": "kibbles",
       "source": "./",
       "description": "Kibbles - Usage HUD & Token Saver: a tiny live band with your limits, task progress, tokens and context; a token saver that trims what Claude reads; and a model router that sends easy work to Haiku and routine coding to Sonnet. With an animated frog."
-    },
-    {
-      "name": "cosy-seasons",
-      "source": "./cosy-seasons",
-      "description": "A cosy animated storybook backdrop that follows the season, with a girl, a frog and Kuro the black cat; the ground pile rises as your context window fills."
     }
   ]
 }

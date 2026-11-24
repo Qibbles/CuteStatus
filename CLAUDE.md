@@ -47,4 +47,4 @@ User settings live in `~/.claude/kibbles.json`, created with defaults on first r
 
 ## Releasing
 
-Bump `version` in `.claude-plugin/plugin.json` on every change users should get: marketplace installs (CLI auto-update, claude.ai "Sync automatically") only fetch a new copy when that version changes. The README's account-install link points at `releases/latest/download/kibbles.plugin`, so each GitHub release needs a `kibbles.plugin` asset: a zip of the plugin folder's contents, with `.claude-plugin/` at the top, excluding `.git`, `.claude-plugin/types/`, `docs/` and `cosy-seasons/` (a separate plugin in the same marketplace). `*.plugin` is gitignored.
+Bump `version` in `.claude-plugin/plugin.json` on every change users should get: marketplace installs (CLI auto-update, claude.ai "Sync automatically") only fetch a new copy when that version changes. The README's account-install link points at `releases/latest/download/kibbles.plugin`, so each GitHub release needs a `kibbles.plugin` asset: a zip of the plugin folder's contents, with `.claude-plugin/` at the top, excluding `.git`, `.claude-plugin/types/` and `docs/`. `*.plugin` is gitignored.
