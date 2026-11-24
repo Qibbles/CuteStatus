@@ -37,6 +37,8 @@ There's nothing to set up or switch on. The band and the token saver run on your
 
 Answer `y` to add the marketplace, then press Enter to install it for your user. The band appears right away, in every Claude Code session on that computer.
 
+**Keep it updated automatically:** type `/plugin`, open the **Marketplaces** tab, select **kibbles** and turn on **auto-update**. Claude Code then checks for new versions in the background and installs them; run `/reload-plugins` or start a new session to use the new version.
+
 Or from a shell:
 
 ```bash
@@ -52,8 +54,9 @@ This adds Kibbles to your account rather than to one computer. It needs a Pro, M
 
 1. Open **Customize → Plugins** in the Claude desktop app, or go to [claude.ai/customize/plugins](https://claude.ai/customize/plugins).
 2. Click **Add → Add marketplace**, enter `Qibbles/Kibbles`, then add the **kibbles** plugin.
+3. On the **Qibbles/Kibbles** marketplace, turn on **Sync automatically**. New versions then reach your account by themselves, with nothing to accept. You can also press **Check for updates** there at any time.
 
-   Or download [`kibbles.plugin`](https://github.com/Qibbles/Kibbles/releases/latest/download/kibbles.plugin) from the [latest release](https://github.com/Qibbles/Kibbles/releases/latest), then click **Add → Upload plugin** and choose the file.
+Prefer a file? Download [`kibbles.plugin`](https://github.com/Qibbles/Kibbles/releases/latest/download/kibbles.plugin) from the [latest release](https://github.com/Qibbles/Kibbles/releases/latest) and use **Add → Upload plugin**. An uploaded file doesn't update itself: you'd upload each new version by hand, so the marketplace route above is easier. Don't keep both; remove one so only one copy of Kibbles is on your account.
 
 Plugins on your account sync to Claude Code when you're signed in with that account (Claude Code v2.1.273 or later). Run `/reload-plugins` to pick it up in a session that's already open. Kibbles draws its band in Claude Code (terminal, desktop app, IDE and cloud sessions); in plain chat it has nothing to show.
 
@@ -62,7 +65,7 @@ Plugins on your account sync to Claude Code when you're signed in with that acco
 <details>
 <summary><b>Update, turn off or remove</b></summary>
 
-**Update** (plugins don't update by themselves):
+**Update by hand** (if auto-update is off):
 
 ```bash
 claude plugin marketplace update kibbles
