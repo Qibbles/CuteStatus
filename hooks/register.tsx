@@ -96,6 +96,9 @@ const dayColor = (weekday: number) => DAY_COLORS[weekday % 7] ?? '#8a8f98'
 const EARLIER_COLOR = '#8a8f98'
 const DAY_LETTERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
+/** The first non-empty line of a brief, short enough to be a helper's name. */
+const firstLine = (text: string) => (text.split('\n').find(l => l.trim()) ?? '').trim().slice(0, 60)
+
 /** 4m 12s, 1h 3m, 45s. */
 function duration(ms: number): string {
   const sec = Math.floor(ms / 1000)
@@ -242,6 +245,10 @@ const S = {
   /** What older versions recorded, read once at start to carry the week over. */
   legacyDaily: {} as Record<string, unknown>,
   dailyDirty: false,
+  /** Helpers that started before their id was known: names to hand out in order. */
+  pendingHelpers: [] as { name: string; model?: string; routed: boolean }[],
+  /** Live token estimates for replies still streaming, by scope:turn:step. */
+  live: new Map<string, { scope: string; tokens: number }>(),
 }
 
 async function configPath($: EngineInterface): Promise<string> {
@@ -347,6 +354,9 @@ async function flush($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   S.lastFlush = now
   recompute(now)
+  const live: Record<string, number> = {}
+  for (const { scope, tokens } of S.live.values()) live[scope] = (live[scope] ?? 0) + tokens
+  S.d.live = live
   await $.state.set(DATA, { ...S.d, steps: S.d.steps.map(s => ({ ...s })) })
   if (S.storeDirty) {
     S.storeDirty = false
@@ -387,10 +397,26 @@ function startTask(now: number): void {
   if (S.d.steps.length > 0 && S.d.steps.every(s => s.status === 'completed')) S.d.steps = []
 }
 
-function helperFor(id: string): Helper {
+/**
+ * The helper with this id, registered on first sight. A helper can be seen
+ * first at its spawn, its first turn or its first reply, whichever the engine
+ * reports first; a name waiting from a spawn without an id is used if there
+ * is one, else `hint` (the start of its brief).
+ */
+function helperFor(id: string, hint?: string): Helper {
   let h = S.d.helpers.find(x => x.id === id)
   if (!h) {
-    h = { id, name: 'helper', tokens: 0, calls: 0, status: 'running', color: S.d.helperSeq ?? 0 }
+    const pending = S.pendingHelpers.shift()
+    h = {
+      id,
+      name: pending?.name || hint || 'helper',
+      tokens: 0,
+      calls: 0,
+      status: 'running',
+      color: S.d.helperSeq ?? 0,
+      model: pending?.model,
+      routed: pending?.routed,
+    }
     S.d.helperSeq = (S.d.helperSeq ?? 0) + 1
     S.d.helpers = [...S.d.helpers, h]
   }
@@ -486,6 +512,11 @@ export const register: Register = on => {
 
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) setRunning($, true)
+    else {
+      // A helper's loop starting: register it now, not at its first reply.
+      helperFor(e.agentId, firstLine(e.text))
+      schedule($)
+    }
     return next(e)
   })
 
@@ -517,7 +548,26 @@ export const register: Register = on => {
   // Token counts from every model request (main loop and subagents).
   on('turn.step', async function* ($, e, next) {
     if (e.agentId === undefined) S.d.mainModel = modelFamily(e.model) || S.d.mainModel
-    const r = yield* next(e)
+    else helperFor(e.agentId)
+    // While the reply streams, estimate its tokens (about 4 characters each)
+    // so the band moves during a long reply; the exact count replaces it at
+    // the end.
+    const scope = e.agentId ?? 'main'
+    const key = `${scope}:${e.turnId}:${e.index}`
+    const stream = next(e)
+    let chars = 0
+    try {
+      for await (const c of stream) {
+        if (c.kind === 'text' || c.kind === 'thinking') chars += c.text.length
+        else if (c.kind === 'input') chars += c.json.length
+        S.live.set(key, { scope, tokens: Math.ceil(chars / 4) })
+        schedule($)
+        yield c
+      }
+    } finally {
+      S.live.delete(key)
+    }
+    const r = await stream.result
     if (r?.usage) {
       const n = r.usage.input_tokens + r.usage.output_tokens
       S.d.taskTokens += n
@@ -538,11 +588,18 @@ export const register: Register = on => {
     // the cheaper model.
     const routed = routerSpawnModel(e, underPressure(), S.d.mainModel)
     const r = await next(routed ? { ...e, model: routed } : e)
-    if (r.deny === undefined && r.agentId) {
-      const h = helperFor(r.agentId)
-      h.name = e.description || e.subagentType
-      h.model = modelFamily(r.model) || undefined
-      h.routed = routed !== null
+    if (r.deny === undefined) {
+      const name = e.description || e.subagentType
+      const model = modelFamily(r.model) || undefined
+      if (r.agentId) {
+        const h = helperFor(r.agentId)
+        h.name = name
+        h.model = model
+        h.routed = routed !== null
+      } else if (!e.fork) {
+        // No id yet: the helper is named when its first turn or reply shows up.
+        S.pendingHelpers.push({ name, model, routed: routed !== null })
+      }
       schedule($)
     }
     return r
@@ -639,8 +696,20 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
-    const data = (await $.state.get(DATA)).value
-    if (!data) return next(e)
+    const stored = (await $.state.get(DATA)).value
+    if (!stored) return next(e)
+    // Fold in the live estimates of replies still streaming, so the counts
+    // move during a long reply instead of jumping when it ends.
+    const live = stored.live ?? {}
+    const liveOf = (scope: string) => live[scope] ?? 0
+    const liveTotal = Object.values(live).reduce((n, v) => n + v, 0)
+    const data = {
+      ...stored,
+      taskTokens: stored.taskTokens + liveTotal,
+      chatTokens: (stored.chatTokens ?? stored.taskTokens) + liveTotal,
+      mainTokens: (stored.mainTokens ?? stored.taskTokens) + liveOf('main'),
+      helpers: (stored.helpers ?? []).map(h => ({ ...h, tokens: h.tokens + liveOf(h.id) })),
+    }
 
     const cols = e.props.bodyColumns
     const LABEL = 9
@@ -791,7 +860,7 @@ export const register: Register = on => {
             const own = data.steps.filter(s => s.owner === h.id)
             const progress = own.length > 0
               ? `${own.filter(s => s.status === 'completed').length}/${own.length}`
-              : h.status === 'running' ? `${h.calls} steps` : ''
+              : h.status === 'running' ? (h.calls > 0 ? `${h.calls} steps` : 'working') : ''
             const state = h.status === 'done' ? '✓' : h.status === 'failed' ? '✗' : ''
             return { key: h.id, color: helperColor(h, i), name: h.name, mark: state, model: h.model && h.model !== data.mainModel ? h.model : '', progress, tokens: fmt(h.tokens) }
           }),

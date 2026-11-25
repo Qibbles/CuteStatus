@@ -171,3 +171,21 @@ test('a tight band still names "you" and never shortens "context"', async ($, on
   expect(token).not.toContain('ctx')
   await ui.unmount()
 })
+
+test('replies still streaming count live, for the main chat and each helper', async ($, on) => {
+  const streaming = {
+    ...data,
+    steps: [], taskTokens: 1_100, mainTokens: 1_100, chatTokens: 1_100, helperSeq: 1, mainModel: 'opus',
+    helpers: [{ id: 'agent-a', name: 'Build Dark Signal prototype', tokens: 0, calls: 0, status: 'running' as const, color: 0 }],
+    live: { main: 100, 'agent-a': 1_400 },
+    isRunning: true,
+  }
+  on('state.get', () => ({ value: { value: streaming, version: 1 } }))
+  const ui = await $.ui.mount({ plugin: 'kibbles', surface: 'desktop', component: 'AbovePrompt', props: props(220, true) })
+  // 1.1k counted + 1.5k still streaming.
+  expect((await ui.find({ type: 'Text', text: /2\.6k/ }))?.text).toContain('2.6k this task · 2.6k this chat')
+  const task = (await ui.find({ type: 'Text', text: /■ you/ }))?.text ?? ''
+  expect(task).toContain('■ you · 1.2k')
+  expect(task).toContain('working · 1.4k')
+  await ui.unmount()
+})

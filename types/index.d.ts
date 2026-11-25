@@ -67,6 +67,8 @@ export type BandData = {
   days?: WeekDays
   /** What the model router split off this task: easy parts sent to a cheaper model. */
   routeNote?: { routes: { model: string; count: number }[] }
+  /** Live token estimates of replies still streaming, by scope ('main' or a helper's id). */
+  live?: Record<string, number>
   /** The main conversation's model family (haiku, sonnet, opus). */
   mainModel?: string
   /** What Claude is waiting on you for (a permission, a question); absent when it isn't. */
