@@ -189,3 +189,18 @@ test('replies still streaming count live, for the main chat and each helper', as
   expect(task).toContain('working · 1.4k')
   await ui.unmount()
 })
+
+test('bars are drawn from one cell shape in the app, so every bar ends at the same place', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...data, weekPct: 33, taskTokens: 12_000 }, version: 1 } }))
+  const app = await $.ui.mount({ plugin: 'kibbles', surface: 'desktop', component: 'AbovePrompt', props: props(140) })
+  const appBar = (await app.find({ type: 'Text', text: /^█+$/ }))?.text ?? ''
+  expect(appBar.length).toBeGreaterThan(0)
+  expect(await app.find({ type: 'Text', text: /░/ })).toBeFalsy()
+  await app.unmount()
+  const term = await $.ui.mount({ plugin: 'kibbles', surface: 'terminal', component: 'AbovePrompt', props: props(140) })
+  const termBar = (await term.find({ type: 'Text', text: /^[█░]+$/ }))?.text ?? ''
+  // Same width in both, the terminal with its dotted empty part.
+  expect(termBar.length).toBe(appBar.length)
+  expect(termBar).toContain('░')
+  await term.unmount()
+})

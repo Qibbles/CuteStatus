@@ -993,19 +993,28 @@ export const register: Register = on => {
         face
       )
 
+    // Bar cells. The terminal's monospace font draws █ and ░ the same width;
+    // the app's fonts don't, so there every cell is a solid █ and the empty
+    // or still-to-do part is a faint tint of it: all bars end at the same place.
+    const graphical = e.surface !== 'terminal'
+    const SHADE = graphical ? '█' : '░'
+    const TRACK: string | undefined = graphical ? '#8a8f9833' : undefined
+    const faint = (color: string) => (graphical && /^#[0-9a-f]{6}$/i.test(color) ? `${color}55` : color)
     const row = (label: string, segs: Seg[], parts: Part[]) => (
       <Box flexDirection="row">
         <Box width={LABEL} flexShrink={0}>
           <Text dimColor>{label}</Text>
         </Box>
-        <Box width={W} flexShrink={0}>
-          <Text mono>
+        <Box width={W} flexShrink={0} overflow="hidden">
+          <Text mono wrap="truncate-end">
             {segs.map((g, i) => (
-              <Text key={`s${i}`} color={g.color}>
-                {(g.shade ? '░' : '█').repeat(g.len)}
+              <Text key={`s${i}`} color={g.shade ? faint(g.color) : g.color}>
+                {(g.shade ? SHADE : '█').repeat(g.len)}
               </Text>
             ))}
-            <Text dimColor>{'░'.repeat(Math.max(0, W - segs.reduce((n, g) => n + g.len, 0)))}</Text>
+            <Text color={TRACK} dimColor={TRACK === undefined}>
+              {SHADE.repeat(Math.max(0, W - segs.reduce((n, g) => n + g.len, 0)))}
+            </Text>
           </Text>
         </Box>
         <Box marginLeft={1} flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
